@@ -59,10 +59,7 @@ func runUploadCoverage(cmd *cobra.Command, args []string) error {
 	}
 
 	if flagDryRun {
-		output.Info("[dry-run] Would upload %s (format: %s, branch: %s, sha: %s)", filename, flagCovFormat, ctx.branch, ctx.sha)
-		if flagJSON {
-			setResult(DryRunResult{DryRun: true, Files: []string{filename}})
-		}
+		ctx.dryRunSimple([]string{filePath}, flagCovFormat)
 		return nil
 	}
 

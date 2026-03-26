@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestInitiateTestUpload_Success(t *testing.T) {
+func TestInitiateUpload_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			t.Errorf("expected POST, got %s", r.Method)
@@ -45,9 +45,10 @@ func TestInitiateTestUpload_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
-	resp, err := client.InitiateTestUpload("acme", 42, TestUploadMetadata{
-		Branch: "main",
-		SHA:    "abc123",
+	resp, err := client.InitiateUpload("acme", 42, UploadInitiateRequest{
+		UploadType: "test_results",
+		Branch:     "main",
+		SHA:        "abc123",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -60,7 +61,7 @@ func TestInitiateTestUpload_Success(t *testing.T) {
 	}
 }
 
-func TestInitiateTestUpload_ServerError(t *testing.T) {
+func TestInitiateUpload_ServerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		if _, err := w.Write([]byte("internal error")); err != nil {
@@ -73,9 +74,10 @@ func TestInitiateTestUpload_ServerError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
-	_, err = client.InitiateTestUpload("acme", 42, TestUploadMetadata{
-		Branch: "main",
-		SHA:    "abc123",
+	_, err = client.InitiateUpload("acme", 42, UploadInitiateRequest{
+		UploadType: "test_results",
+		Branch:     "main",
+		SHA:        "abc123",
 	})
 	if err == nil {
 		t.Fatal("expected error for server error")
@@ -88,11 +90,11 @@ func TestMapTestStatus(t *testing.T) {
 		UploadType: "test_results",
 		Status:     "completed",
 		Result: map[string]any{
-			"tests_ingested":              float64(10),
-			"quarantined_count":           float64(2),
-			"quarantined_tests":           []any{"test_a", "test_b"},
+			"tests_ingested":             float64(10),
+			"suppressed_count":           float64(2),
+			"suppressed_tests":           []any{"test_a", "test_b"},
 			"failed_count":               float64(3),
-			"unquarantined_failure_count": float64(1),
+			"unsuppressed_failure_count": float64(1),
 		},
 	}
 
@@ -107,16 +109,16 @@ func TestMapTestStatus(t *testing.T) {
 	if result.TestsIngested == nil || *result.TestsIngested != 10 {
 		t.Errorf("expected tests_ingested=10, got %v", result.TestsIngested)
 	}
-	if result.QuarantinedCount == nil || *result.QuarantinedCount != 2 {
-		t.Errorf("expected quarantined_count=2, got %v", result.QuarantinedCount)
+	if result.SuppressedCount == nil || *result.SuppressedCount != 2 {
+		t.Errorf("expected suppressed_count=2, got %v", result.SuppressedCount)
 	}
-	if len(result.QuarantinedTests) != 2 {
-		t.Errorf("expected 2 quarantined tests, got %d", len(result.QuarantinedTests))
+	if len(result.SuppressedTests) != 2 {
+		t.Errorf("expected 2 suppressed tests, got %d", len(result.SuppressedTests))
 	}
 	if result.FailedCount == nil || *result.FailedCount != 3 {
 		t.Errorf("expected failed_count=3, got %v", result.FailedCount)
 	}
-	if result.UnquarantinedFailureCount == nil || *result.UnquarantinedFailureCount != 1 {
-		t.Errorf("expected unquarantined_failure_count=1, got %v", result.UnquarantinedFailureCount)
+	if result.UnsuppressedFailureCount == nil || *result.UnsuppressedFailureCount != 1 {
+		t.Errorf("expected unsuppressed_failure_count=1, got %v", result.UnsuppressedFailureCount)
 	}
 }

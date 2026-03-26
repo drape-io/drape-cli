@@ -63,22 +63,10 @@ func mapLintStatus(raw *UploadStatusResponse) *LintStatusResponse {
 		return result
 	}
 
-	if v, ok := raw.Result["snapshot_id"].(float64); ok {
-		id := int(v)
-		result.SnapshotID = &id
-	}
-	if v, ok := raw.Result["total_violations"].(float64); ok {
-		count := int(v)
-		result.TotalViolations = &count
-	}
-	if v, ok := raw.Result["error_count"].(float64); ok {
-		count := int(v)
-		result.ErrorCount = &count
-	}
-	if v, ok := raw.Result["warning_count"].(float64); ok {
-		count := int(v)
-		result.WarningCount = &count
-	}
+	result.SnapshotID = getInt(raw.Result, "snapshot_id")
+	result.TotalViolations = getInt(raw.Result, "total_violations")
+	result.ErrorCount = getInt(raw.Result, "error_count")
+	result.WarningCount = getInt(raw.Result, "warning_count")
 	if diffMap, ok := raw.Result["lint_diff"].(map[string]any); ok {
 		result.LintDiff = mapLintDiff(diffMap)
 	}
@@ -87,53 +75,26 @@ func mapLintStatus(raw *UploadStatusResponse) *LintStatusResponse {
 }
 
 func mapLintDiff(m map[string]any) *LintDiffInfo {
-	diff := &LintDiffInfo{}
+	diff := &LintDiffInfo{
+		Passed:                   getBool(m, "passed"),
+		BaseViolationCount:       getIntVal(m, "base_violation_count"),
+		HeadViolationCount:       getIntVal(m, "head_violation_count"),
+		NewViolationCount:        getIntVal(m, "new_violation_count"),
+		ResolvedViolationCount:   getIntVal(m, "resolved_violation_count"),
+		SuppressedViolationCount: getIntVal(m, "suppressed_violation_count"),
+		FailureReasons:           getStringSlice(m, "failure_reasons"),
+	}
 
-	if v, ok := m["passed"].(bool); ok {
-		diff.Passed = v
-	}
-	if v, ok := m["base_violation_count"].(float64); ok {
-		diff.BaseViolationCount = int(v)
-	}
-	if v, ok := m["head_violation_count"].(float64); ok {
-		diff.HeadViolationCount = int(v)
-	}
-	if v, ok := m["new_violation_count"].(float64); ok {
-		diff.NewViolationCount = int(v)
-	}
-	if v, ok := m["resolved_violation_count"].(float64); ok {
-		diff.ResolvedViolationCount = int(v)
-	}
-	if v, ok := m["suppressed_violation_count"].(float64); ok {
-		diff.SuppressedViolationCount = int(v)
-	}
 	if violations, ok := m["new_violations"].([]any); ok {
 		for _, v := range violations {
 			if vm, ok := v.(map[string]any); ok {
-				lv := LintViolation{}
-				if s, ok := vm["rule_id"].(string); ok {
-					lv.RuleID = s
-				}
-				if s, ok := vm["file_path"].(string); ok {
-					lv.FilePath = s
-				}
-				if f, ok := vm["line"].(float64); ok {
-					lv.Line = int(f)
-				}
-				if s, ok := vm["severity"].(string); ok {
-					lv.Severity = s
-				}
-				if s, ok := vm["message"].(string); ok {
-					lv.Message = s
-				}
-				diff.NewViolations = append(diff.NewViolations, lv)
-			}
-		}
-	}
-	if reasons, ok := m["failure_reasons"].([]any); ok {
-		for _, r := range reasons {
-			if s, ok := r.(string); ok {
-				diff.FailureReasons = append(diff.FailureReasons, s)
+				diff.NewViolations = append(diff.NewViolations, LintViolation{
+					RuleID:   getStringVal(vm, "rule_id"),
+					FilePath: getStringVal(vm, "file_path"),
+					Line:     getIntVal(vm, "line"),
+					Severity: getStringVal(vm, "severity"),
+					Message:  getStringVal(vm, "message"),
+				})
 			}
 		}
 	}
