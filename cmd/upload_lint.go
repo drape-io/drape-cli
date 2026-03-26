@@ -4,24 +4,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/drape-io/drape-cli/internal/api"
-	"github.com/drape-io/drape-cli/internal/cidetect"
 	"github.com/drape-io/drape-cli/internal/exitcode"
 	"github.com/drape-io/drape-cli/internal/output"
 )
 
-var (
-	flagLintBranch  string
-	flagLintSHA     string
-	flagLintFormat  string
-	flagLintWait    bool
-	flagLintTimeout int
-)
+var flagLintFormat string
 
 var uploadLintCmd = &cobra.Command{
 	Use:   "lint <file>",
@@ -32,99 +23,64 @@ var uploadLintCmd = &cobra.Command{
 }
 
 func init() {
-	uploadLintCmd.Flags().StringVar(&flagLintBranch, "branch", "", "Git branch (auto-detected from CI)")
-	uploadLintCmd.Flags().StringVar(&flagLintSHA, "sha", "", "Git commit SHA (auto-detected from CI)")
 	uploadLintCmd.Flags().StringVar(&flagLintFormat, "format", "sarif", "Lint report format (default: sarif)")
-	uploadLintCmd.Flags().BoolVar(&flagLintWait, "wait", true, "Wait for server-side processing")
-	uploadLintCmd.Flags().IntVar(&flagLintTimeout, "timeout", 120, "Max wait time in seconds")
 
 	uploadCmd.AddCommand(uploadLintCmd)
 }
 
 func runUploadLint(cmd *cobra.Command, args []string) error {
 	filePath := filepath.Clean(args[0])
+	filename := filepath.Base(filePath)
 
 	data, err := os.ReadFile(filePath) //nolint:gosec // G304: path is from CLI args, cleaned above
 	if err != nil {
 		return &ExitError{Code: exitcode.ParseError, Err: fmt.Errorf("reading file %s: %w", filePath, err)}
 	}
-	output.Info("Read %s (%d bytes)", filepath.Base(filePath), len(data))
+	output.Info("Read %s (%d bytes)", filename, len(data))
 
-	ci := cidetect.Detect(os.Getenv)
-	if ci == nil {
-		ci = cidetect.DetectFromGit()
-	}
-
-	branch := resolveGitContext(flagLintBranch, ci, func(info *cidetect.CIInfo) string { return info.Branch })
-	sha := resolveGitContext(flagLintSHA, ci, func(info *cidetect.CIInfo) string { return info.CommitSHA })
-
-	if branch == "" {
-		return &ExitError{Code: exitcode.UsageError, Err: errMissing("--branch (could not auto-detect)")}
-	}
-	if sha == "" {
-		return &ExitError{Code: exitcode.UsageError, Err: errMissing("--sha (could not auto-detect)")}
+	ctx, err := newUploadContext()
+	if err != nil {
+		return err
 	}
 
 	if flagDryRun {
-		output.Info("[dry-run] Would upload %s (format: %s, branch: %s, sha: %s)", filepath.Base(filePath), flagLintFormat, branch, sha)
+		output.Info("[dry-run] Would upload %s (format: %s, branch: %s, sha: %s)", filename, flagLintFormat, ctx.branch, ctx.sha)
+		if flagJSON {
+			setResult(DryRunResult{DryRun: true, Files: []string{filename}})
+		}
 		return nil
 	}
 
-	orgSlug, err := resolveOrg()
-	if err != nil {
+	if err := ctx.resolveClient(); err != nil {
 		return err
 	}
 
-	client, err := newClient()
-	if err != nil {
-		return err
-	}
-
-	repoID, err := resolveRepoID(client, orgSlug)
-	if err != nil {
-		return err
-	}
-
-	prNumber := 0
-	if ci != nil && ci.PRNumber != "" {
-		prNumber, _ = strconv.Atoi(ci.PRNumber)
-	}
-
-	filename := filepath.Base(filePath)
 	metadata := map[string]any{
 		"format": flagLintFormat,
 	}
-	if prNumber != 0 {
-		metadata["pr_number"] = prNumber
+	if ctx.prNumber != 0 {
+		metadata["pr_number"] = ctx.prNumber
 	}
 
-	initResp, err := client.InitiateUpload(orgSlug, repoID, api.UploadInitiateRequest{
-		UploadType: "lint_report",
-		Branch:     branch,
-		SHA:        sha,
-		Filename:   filename,
-		Metadata:   metadata,
-	})
+	uploadID, err := ctx.uploadFile("lint_report", filename, data, metadata)
 	if err != nil {
 		return &ExitError{Code: exitcode.UploadError, Err: err}
 	}
+	output.Info("Lint report uploaded (ID: %d)", uploadID)
 
-	if err := client.UploadToPresignedURL(initResp.UploadURL, data); err != nil {
-		return &ExitError{Code: exitcode.UploadError, Err: err}
+	result := UploadResult{
+		FilesMatched:  1,
+		FilesUploaded: 1,
+		Uploads:       []UploadEntry{{Filename: filename, UploadID: uploadID, DrapeURL: ctx.drapeURL(uploadID)}},
 	}
 
-	if err := client.CompleteUpload(orgSlug, repoID, initResp.UploadID); err != nil {
-		return &ExitError{Code: exitcode.UploadError, Err: err}
-	}
-	output.Info("Lint report uploaded (ID: %d)", initResp.UploadID)
-
-	if !flagLintWait {
+	if !flagUploadWait {
+		setResult(result)
 		return nil
 	}
 
-	output.Info("Waiting for processing (timeout: %ds)...", flagLintTimeout)
-	timeout := time.Duration(flagLintTimeout) * time.Second
-	status, err := client.PollLintStatus(orgSlug, repoID, initResp.UploadID, timeout)
+	output.Info("Waiting for processing (timeout: %ds)...", flagUploadTimeout)
+	status, err := ctx.client.PollLintStatus(ctx.orgSlug, ctx.repoID, uploadID, ctx.pollTimeout())
 	if err != nil {
 		if status != nil && status.Status == "failed" {
 			return &ExitError{Code: exitcode.UploadError, Err: err}
@@ -132,7 +88,9 @@ func runUploadLint(cmd *cobra.Command, args []string) error {
 		return &ExitError{Code: exitcode.Timeout, Err: err}
 	}
 
-	// Display summary
+	result.Uploads[0].Result = status
+	setResult(result)
+
 	output.Info("")
 	output.Info("Lint Summary")
 	if status.TotalViolations != nil {
@@ -146,7 +104,7 @@ func runUploadLint(cmd *cobra.Command, args []string) error {
 	}
 
 	if status.LintDiff != nil {
-		return printLintDiff(status.LintDiff, prNumber)
+		return printLintDiff(status.LintDiff, ctx.prNumber)
 	}
 
 	return nil

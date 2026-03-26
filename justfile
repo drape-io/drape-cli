@@ -1,6 +1,11 @@
 # justfile for drape-cli development
 # https://github.com/casey/just
 
+version := env("VERSION", "dev")
+commit  := `git rev-parse --short HEAD 2>/dev/null || echo "none"`
+date    := `date -u +%Y-%m-%dT%H:%M:%SZ`
+ldflags := "-X main.version=" + version + " -X main.commit=" + commit + " -X main.date=" + date
+
 # Default recipe (runs when you type 'just')
 default:
     @just --list
@@ -9,15 +14,22 @@ default:
 # Build & Test
 # ============================================================================
 
-# Build the CLI binary
+# Build the CLI binary with version metadata
 build:
-    go build -o bin/drape .
+    go build -ldflags "{{ldflags}}" -o bin/drape .
+
+# Verify the project compiles (no artifact)
+build-check:
+    go build -o /dev/null .
 
 # Run tests
-test:
-    go test ./... -v -count=1
+test *FLAGS:
+    go test ./... -count=1 {{FLAGS}}
 
-# Run tests with race detector
+# Run tests with verbose output
+test-v: (test "-v")
+
+# Run tests with race detector (matches CI)
 test-race:
     go test ./... -v -count=1 -race
 
@@ -48,15 +60,13 @@ lint-all: lint lint-actions lint-zizmor
 # Security
 # ============================================================================
 
-# Run gosec (Go security linter)
+# Run gosec (Go security linter) — pinned to match CI
 security-gosec:
-    go install github.com/securego/gosec/v2/cmd/gosec@latest
-    gosec ./...
+    go run github.com/securego/gosec/v2/cmd/gosec@v2.22.4 ./...
 
-# Run govulncheck (Go vulnerability checker)
+# Run govulncheck (Go vulnerability checker, informational)
 security-govulncheck:
-    go install golang.org/x/vuln/cmd/govulncheck@latest
-    govulncheck ./...
+    go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 # Run grype (dependency vulnerability scanner)
 security-grype:
@@ -70,17 +80,17 @@ security-semgrep:
 security: security-gosec security-govulncheck security-grype security-semgrep
 
 # ============================================================================
-# All checks
+# Aggregate checks
 # ============================================================================
 
-# Run all checks (lint + test + vet + security)
-check: lint vet test-race security
+# Quick pre-push check: lint + vet + test
+check: lint vet test
 
-# Run quick checks (lint + test + vet) - no security scanning
-check-quick: lint vet test
+# Full CI-equivalent pipeline: race tests + lint + vet + build + security
+ci: test-race vet lint build-check security
 
 # ============================================================================
-# Release
+# Release & Cleanup
 # ============================================================================
 
 # Build a snapshot release (for testing goreleaser config)
@@ -92,6 +102,6 @@ clean:
     rm -rf bin/ dist/
 
 # Run the CLI (pass args after --)
-# Example: just run upload tests "**/*.xml" --org acme
-run *args:
-    go run . {{args}}
+# Example: just run -- upload tests "**/*.xml" --org acme
+run *ARGS:
+    go run . {{ARGS}}

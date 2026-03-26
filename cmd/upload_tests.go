@@ -4,29 +4,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/drape-io/drape-cli/internal/api"
-	"github.com/drape-io/drape-cli/internal/cidetect"
 	"github.com/drape-io/drape-cli/internal/exitcode"
-	"github.com/drape-io/drape-cli/internal/junit"
 	"github.com/drape-io/drape-cli/internal/output"
 )
 
 var (
-	flagBranch   string
-	flagSHA      string
-	flagFormat   string
-	flagJobName  string
-	flagPRNumber int
-	flagWait     bool
-	flagTimeout  int
-	flagRunDate  string
-	flagGroups   []string
+	flagTestFormat   string
+	flagTestJobName  string
+	flagTestPRNumber int
+	flagTestRunDate  string
+	flagTestGroups   []string
 )
 
 var uploadTestsCmd = &cobra.Command{
@@ -38,21 +29,16 @@ var uploadTestsCmd = &cobra.Command{
 }
 
 func init() {
-	uploadTestsCmd.Flags().StringVar(&flagBranch, "branch", "", "Git branch (auto-detected from CI)")
-	uploadTestsCmd.Flags().StringVar(&flagSHA, "sha", "", "Git commit SHA (auto-detected from CI)")
-	uploadTestsCmd.Flags().StringVar(&flagFormat, "format", "", "Force format (junit, ctrf). Default: auto-detect")
-	uploadTestsCmd.Flags().StringVar(&flagJobName, "job-name", "", "CI job name (auto-detected from CI)")
-	uploadTestsCmd.Flags().IntVar(&flagPRNumber, "pr-number", 0, "PR number (auto-detected from CI)")
-	uploadTestsCmd.Flags().BoolVar(&flagWait, "wait", true, "Wait for server-side processing before exiting")
-	uploadTestsCmd.Flags().IntVar(&flagTimeout, "timeout", 120, "Max wait time in seconds for processing")
-	uploadTestsCmd.Flags().StringVar(&flagRunDate, "run-date", "", "ISO 8601 date for historical uploads (e.g. 2026-03-15)")
-	uploadTestsCmd.Flags().StringSliceVar(&flagGroups, "group", nil, "Group label(s) for this upload (can be specified multiple times)")
+	uploadTestsCmd.Flags().StringVar(&flagTestFormat, "format", "", "Force format (junit, ctrf). Default: auto-detect")
+	uploadTestsCmd.Flags().StringVar(&flagTestJobName, "job-name", "", "CI job name (auto-detected from CI)")
+	uploadTestsCmd.Flags().IntVar(&flagTestPRNumber, "pr-number", 0, "PR number (auto-detected from CI)")
+	uploadTestsCmd.Flags().StringVar(&flagTestRunDate, "run-date", "", "ISO 8601 date for historical uploads (e.g. 2026-03-15)")
+	uploadTestsCmd.Flags().StringSliceVar(&flagTestGroups, "group", nil, "Group label(s) for this upload (can be specified multiple times)")
 
 	uploadCmd.AddCommand(uploadTestsCmd)
 }
 
 func runUploadTests(cmd *cobra.Command, args []string) error {
-	// Expand glob patterns
 	files, err := expandGlobs(args)
 	if err != nil {
 		return &ExitError{Code: exitcode.UsageError, Err: err}
@@ -63,84 +49,51 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 
 	output.Info("Found %d file(s) to upload", len(files))
 
-	// Detect CI environment
-	ci := cidetect.Detect(os.Getenv)
-	if ci == nil {
-		ci = cidetect.DetectFromGit()
+	ctx, err := newUploadContext()
+	if err != nil {
+		return err
 	}
 
-	branch := resolveGitContext(flagBranch, ci, func(info *cidetect.CIInfo) string { return info.Branch })
-	sha := resolveGitContext(flagSHA, ci, func(info *cidetect.CIInfo) string { return info.CommitSHA })
-
-	if branch == "" {
-		return &ExitError{Code: exitcode.UsageError, Err: errMissing("--branch (could not auto-detect)")}
-	}
-	if sha == "" {
-		return &ExitError{Code: exitcode.UsageError, Err: errMissing("--sha (could not auto-detect)")}
-	}
-
-	if ci != nil {
-		output.Verbose("Detected CI: %s", ci.ProviderName)
-		output.Verbose("  Branch: %s, SHA: %s", branch, sha)
-		if ci.IsPullRequest {
-			output.Verbose("  PR #%s → %s", ci.PRNumber, ci.TargetBranch)
-		}
-	}
-
-	// Dry run: validate locally only
 	if flagDryRun {
 		return dryRunValidate(files)
 	}
 
-	// Resolve org and repo
-	orgSlug, err := resolveOrg()
-	if err != nil {
-		return err
-	}
-
-	client, err := newClient()
-	if err != nil {
-		return err
-	}
-
-	repoID, err := resolveRepoID(client, orgSlug)
-	if err != nil {
+	if err := ctx.resolveClient(); err != nil {
 		return err
 	}
 
 	// Build metadata
-	prNumber := flagPRNumber
-	if prNumber == 0 && ci != nil && ci.PRNumber != "" {
-		prNumber, _ = strconv.Atoi(ci.PRNumber)
+	prNumber := flagTestPRNumber
+	if prNumber == 0 {
+		prNumber = ctx.prNumber
 	}
 
-	metadata := api.TestUploadMetadata{
-		Branch:   branch,
-		SHA:      sha,
-		Format:   flagFormat,
-		JobName:  flagJobName,
-		PRNumber: prNumber,
+	metadata := map[string]any{}
+	if flagTestFormat != "" {
+		metadata["format"] = flagTestFormat
 	}
-	if ci != nil {
-		metadata.ProviderType = ci.Provider
-		if metadata.JobName == "" {
-			metadata.JobName = ci.JobID
-		}
+	if ctx.ci != nil {
+		metadata["provider_type"] = ctx.ci.Provider
 	}
-	if flagRunDate != "" {
-		metadata.RunDate = flagRunDate
+	jobName := flagTestJobName
+	if jobName == "" && ctx.ci != nil {
+		jobName = ctx.ci.JobID
 	}
-	if len(flagGroups) > 0 {
-		metadata.Group = strings.Join(flagGroups, ",")
+	if jobName != "" {
+		metadata["job_name"] = jobName
 	}
-
-	// Upload each file via unified upload flow
-	type uploadResult struct {
-		uploadID int
-		filename string
+	if prNumber != 0 {
+		metadata["pr_number"] = prNumber
+	}
+	if flagTestRunDate != "" {
+		metadata["run_date"] = flagTestRunDate
+	}
+	if len(flagTestGroups) > 0 {
+		metadata["group"] = strings.Join(flagTestGroups, ",")
 	}
 
-	var uploads []uploadResult
+	// Upload each file
+	result := UploadResult{FilesMatched: len(files)}
 	var uploadErrors int
 
 	for _, f := range files {
@@ -154,48 +107,34 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 		filename := filepath.Base(f)
 		output.Verbose("Uploading %s (%d bytes)...", filename, len(data))
 
-		// Step 1: Initiate upload
-		initResp, err := client.InitiateTestUpload(orgSlug, repoID, metadata)
+		uploadID, err := ctx.uploadFile("test_results", filename, data, metadata)
 		if err != nil {
-			output.Error("Failed to initiate upload for %s: %v", filename, err)
+			output.Error("Failed to upload %s: %v", filename, err)
 			uploadErrors++
 			continue
 		}
 
-		// Step 2: Upload to presigned URL
-		if err := client.UploadToPresignedURL(initResp.UploadURL, data); err != nil {
-			output.Error("Failed to upload %s to storage: %v", filename, err)
-			uploadErrors++
-			continue
-		}
-
-		// Step 3: Complete upload
-		if err := client.CompleteTestUpload(orgSlug, repoID, initResp.UploadID); err != nil {
-			output.Error("Failed to complete upload for %s: %v", filename, err)
-			uploadErrors++
-			continue
-		}
-
-		output.Verbose("  %s: upload initiated (ID: %d)", filename, initResp.UploadID)
-		uploads = append(uploads, uploadResult{uploadID: initResp.UploadID, filename: filename})
+		output.Verbose("  %s: upload initiated (ID: %d)", filename, uploadID)
+		result.Uploads = append(result.Uploads, UploadEntry{Filename: filename, UploadID: uploadID, DrapeURL: ctx.drapeURL(uploadID)})
 	}
 
-	if uploadErrors > 0 && len(uploads) == 0 {
+	result.FilesUploaded = len(result.Uploads)
+
+	if uploadErrors > 0 && len(result.Uploads) == 0 {
 		return &ExitError{Code: exitcode.UploadError, Err: fmt.Errorf("all uploads failed")}
 	}
 
-	output.Info("Uploaded %d/%d file(s)", len(uploads), len(files))
+	output.Info("Uploaded %d/%d file(s)", result.FilesUploaded, len(files))
 
-	// Step 4: Wait for processing if requested
-	if !flagWait {
-		for _, u := range uploads {
-			output.Info("  %s: processing (ID: %d)", u.filename, u.uploadID)
+	if !flagUploadWait {
+		for _, u := range result.Uploads {
+			output.Info("  %s: processing (ID: %d)", u.Filename, u.UploadID)
 		}
+		setResult(result)
 		return nil
 	}
 
-	output.Info("Waiting for processing (timeout: %ds)...", flagTimeout)
-	timeout := time.Duration(flagTimeout) * time.Second
+	output.Info("Waiting for processing (timeout: %ds)...", flagUploadTimeout)
 
 	var totalIngested int
 	var totalQuarantined int
@@ -203,22 +142,25 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 	var totalUnquarantinedFailures int
 	var processingErrors int
 
-	for _, u := range uploads {
-		status, err := client.PollTestStatus(orgSlug, repoID, u.uploadID, timeout)
+	for i, u := range result.Uploads {
+		status, err := ctx.client.PollTestStatus(ctx.orgSlug, ctx.repoID, u.UploadID, ctx.pollTimeout())
 		if err != nil {
 			if status != nil && status.Status == "failed" {
-				output.Error("  %s: processing failed: %v", u.filename, err)
+				output.Error("  %s: processing failed: %v", u.Filename, err)
+				result.Uploads[i].Result = status
 				processingErrors++
 				continue
 			}
 			return &ExitError{Code: exitcode.Timeout, Err: err}
 		}
 
+		result.Uploads[i].Result = status
+
 		ingested := 0
 		if status.TestsIngested != nil {
 			ingested = *status.TestsIngested
 		}
-		output.Verbose("  %s: %d tests ingested", u.filename, ingested)
+		output.Verbose("  %s: %d tests ingested", u.Filename, ingested)
 
 		totalIngested += ingested
 		if status.QuarantinedCount != nil {
@@ -232,10 +174,12 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	setResult(result)
+
 	// Summary
 	output.Info("")
 	output.Info("Upload Summary")
-	output.Info("  Files uploaded: %d/%d", len(uploads), len(files))
+	output.Info("  Files uploaded: %d/%d", result.FilesUploaded, len(files))
 	output.Info("  Tests ingested: %d", totalIngested)
 	if totalFailed > 0 {
 		output.Info("  Failed tests:   %d", totalFailed)
@@ -250,7 +194,6 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 		output.Info("  Process errors: %d", processingErrors)
 	}
 
-	// Exit code override: if all failures are quarantined, pass CI
 	if totalFailed > 0 && totalUnquarantinedFailures == 0 {
 		output.Info("")
 		output.Info("All %d failure(s) are quarantined — passing CI", totalFailed)
@@ -264,51 +207,37 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// resolveGitContext returns the flag value if set, otherwise the CI-detected value.
-func resolveGitContext(flagVal string, ci *cidetect.CIInfo, getter func(*cidetect.CIInfo) string) string {
-	if flagVal != "" {
-		return flagVal
-	}
-	if ci != nil {
-		return getter(ci)
-	}
-	return ""
-}
-
 func dryRunValidate(files []string) error {
 	output.Info("[dry-run] Validating files locally, no upload will be performed")
 
-	var allCases []junit.TestCase
-	var parseErrors int
+	results, total, parseErrors := validateJUnitFiles(files)
 
-	for _, f := range files {
-		data, err := os.ReadFile(filepath.Clean(f)) //nolint:gosec // G304: path is from CLI args + glob expansion
-		if err != nil {
-			output.Error("Failed to read %s: %v", f, err)
-			parseErrors++
-			continue
-		}
-
-		cases, err := junit.Parse(data)
-		if err != nil {
-			output.Error("Failed to parse %s: %v", f, err)
-			parseErrors++
-			continue
-		}
-
-		summary := junit.Summarize(cases)
+	for _, r := range results {
 		output.Info("  %s: %d tests (%d passed, %d failed, %d skipped, %d errors)",
-			filepath.Base(f), summary.Total, summary.Passed, summary.Failed, summary.Skipped, summary.Errored)
-		allCases = append(allCases, cases...)
+			r.Filename, r.Summary.Total, r.Summary.Passed, r.Summary.Failed, r.Summary.Skipped, r.Summary.Errored)
 	}
 
-	summary := junit.Summarize(allCases)
 	output.Info("")
 	output.Info("[dry-run] Total: %d tests (%d passed, %d failed, %d skipped, %d errors)",
-		summary.Total, summary.Passed, summary.Failed, summary.Skipped, summary.Errored)
+		total.Total, total.Passed, total.Failed, total.Skipped, total.Errored)
 
 	if parseErrors > 0 {
 		return &ExitError{Code: exitcode.ParseError, Err: fmt.Errorf("%d file(s) failed to parse", parseErrors)}
+	}
+
+	if flagJSON {
+		var jsonFiles []TestsDryRunFile
+		for _, r := range results {
+			jsonFiles = append(jsonFiles, TestsDryRunFile{
+				Filename: r.Filename,
+				Total:    r.Summary.Total,
+				Passed:   r.Summary.Passed,
+				Failed:   r.Summary.Failed,
+				Skipped:  r.Summary.Skipped,
+				Errored:  r.Summary.Errored,
+			})
+		}
+		setResult(TestsDryRunResult{DryRun: true, Files: jsonFiles})
 	}
 	return nil
 }

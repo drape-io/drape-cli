@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -19,10 +18,6 @@ import (
 var (
 	flagCovFormat       string
 	flagCovPathPrefix   string
-	flagCovBranch       string
-	flagCovSHA          string
-	flagCovWait         bool
-	flagCovTimeout      int
 	flagCovTargetBranch string
 	flagCovRunDate      string
 	flagCovGroups       []string
@@ -39,10 +34,6 @@ var uploadCoverageCmd = &cobra.Command{
 func init() {
 	uploadCoverageCmd.Flags().StringVar(&flagCovFormat, "format", "", "Coverage format: cobertura, lcov, go (required)")
 	uploadCoverageCmd.Flags().StringVar(&flagCovPathPrefix, "path-prefix", "", "Path prefix mapping for repo structure")
-	uploadCoverageCmd.Flags().StringVar(&flagCovBranch, "branch", "", "Git branch (auto-detected from CI)")
-	uploadCoverageCmd.Flags().StringVar(&flagCovSHA, "sha", "", "Git commit SHA (auto-detected from CI)")
-	uploadCoverageCmd.Flags().BoolVar(&flagCovWait, "wait", true, "Wait for server-side processing")
-	uploadCoverageCmd.Flags().IntVar(&flagCovTimeout, "timeout", 120, "Max wait time in seconds")
 	uploadCoverageCmd.Flags().StringVar(&flagCovTargetBranch, "target-branch", "", "Target branch for PR diff (auto-detected from CI)")
 	uploadCoverageCmd.Flags().StringVar(&flagCovRunDate, "run-date", "", "ISO 8601 date for historical uploads (e.g. 2026-03-15)")
 	uploadCoverageCmd.Flags().StringSliceVar(&flagCovGroups, "group", nil, "Group label(s) for this upload (can be specified multiple times)")
@@ -54,116 +45,93 @@ func init() {
 
 func runUploadCoverage(cmd *cobra.Command, args []string) error {
 	filePath := filepath.Clean(args[0])
+	filename := filepath.Base(filePath)
 
-	// Read file
 	data, err := os.ReadFile(filePath) //nolint:gosec // G304: path is from CLI args, cleaned above
 	if err != nil {
 		return &ExitError{Code: exitcode.ParseError, Err: fmt.Errorf("reading file %s: %w", filePath, err)}
 	}
-	output.Info("Read %s (%d bytes)", filepath.Base(filePath), len(data))
+	output.Info("Read %s (%d bytes)", filename, len(data))
 
-	// Detect CI
-	ci := cidetect.Detect(os.Getenv)
-	if ci == nil {
-		ci = cidetect.DetectFromGit()
-	}
-
-	branch := resolveGitContext(flagCovBranch, ci, func(info *cidetect.CIInfo) string { return info.Branch })
-	sha := resolveGitContext(flagCovSHA, ci, func(info *cidetect.CIInfo) string { return info.CommitSHA })
-
-	if branch == "" {
-		return &ExitError{Code: exitcode.UsageError, Err: errMissing("--branch (could not auto-detect)")}
-	}
-	if sha == "" {
-		return &ExitError{Code: exitcode.UsageError, Err: errMissing("--sha (could not auto-detect)")}
+	ctx, err := newUploadContext()
+	if err != nil {
+		return err
 	}
 
 	if flagDryRun {
-		output.Info("[dry-run] Would upload %s (format: %s, branch: %s, sha: %s)", filepath.Base(filePath), flagCovFormat, branch, sha)
+		output.Info("[dry-run] Would upload %s (format: %s, branch: %s, sha: %s)", filename, flagCovFormat, ctx.branch, ctx.sha)
+		if flagJSON {
+			setResult(DryRunResult{DryRun: true, Files: []string{filename}})
+		}
 		return nil
 	}
 
-	// Resolve org and repo
-	orgSlug, err := resolveOrg()
-	if err != nil {
+	if err := ctx.resolveClient(); err != nil {
 		return err
 	}
 
-	client, err := newClient()
-	if err != nil {
-		return err
+	// Build metadata
+	targetBranch := resolveGitContext(flagCovTargetBranch, ctx.ci, func(info *cidetect.CIInfo) string { return info.TargetBranch })
+
+	metadata := map[string]any{
+		"format": flagCovFormat,
+	}
+	if flagCovPathPrefix != "" {
+		metadata["path_prefix"] = flagCovPathPrefix
+	}
+	if ctx.prNumber != 0 {
+		metadata["pr_number"] = ctx.prNumber
+	}
+	if targetBranch != "" {
+		metadata["target_branch"] = targetBranch
+	}
+	if flagCovRunDate != "" {
+		metadata["run_date"] = flagCovRunDate
+	}
+	if len(flagCovGroups) > 0 {
+		metadata["group"] = strings.Join(flagCovGroups, ",")
 	}
 
-	repoID, err := resolveRepoID(client, orgSlug)
-	if err != nil {
-		return err
-	}
-
-	// Build request
-	prNumber := 0
-	if ci != nil && ci.PRNumber != "" {
-		prNumber, _ = strconv.Atoi(ci.PRNumber)
-	}
-
-	targetBranch := resolveGitContext(flagCovTargetBranch, ci, func(info *cidetect.CIInfo) string { return info.TargetBranch })
-
-	req := api.CoverageUploadRequest{
-		Branch:       branch,
-		SHA:          sha,
-		Format:       flagCovFormat,
-		Filename:     filepath.Base(filePath),
-		PathPrefix:   flagCovPathPrefix,
-		PRNumber:     prNumber,
-		TargetBranch: targetBranch,
-		RunDate:      flagCovRunDate,
-		Group:        strings.Join(flagCovGroups, ","),
-	}
-
-	// Step 1: Initiate upload
-	output.Verbose("Initiating coverage upload...")
-	initResp, err := client.InitiateCoverageUpload(orgSlug, repoID, req)
+	uploadID, err := ctx.uploadFile("coverage", filename, data, metadata)
 	if err != nil {
 		return &ExitError{Code: exitcode.UploadError, Err: err}
 	}
-	output.Verbose("Upload ID: %d, uploading to presigned URL...", initResp.UploadID)
+	output.Info("Coverage upload initiated (ID: %d)", uploadID)
 
-	// Step 2: Upload to presigned URL
-	if err := client.UploadToPresignedURL(initResp.UploadURL, data); err != nil {
-		return &ExitError{Code: exitcode.UploadError, Err: err}
+	result := UploadResult{
+		FilesMatched:  1,
+		FilesUploaded: 1,
+		Uploads:       []UploadEntry{{Filename: filename, UploadID: uploadID, DrapeURL: ctx.drapeURL(uploadID)}},
 	}
-	output.Verbose("File uploaded to object storage")
 
-	// Step 3: Complete upload
-	if err := client.CompleteCoverageUpload(orgSlug, repoID, initResp.UploadID); err != nil {
-		return &ExitError{Code: exitcode.UploadError, Err: err}
+	if !flagUploadWait {
+		setResult(result)
+		return nil
 	}
-	output.Info("Coverage upload initiated (ID: %d)", initResp.UploadID)
 
-	// Step 4: Wait for processing
-	if flagCovWait {
-		output.Info("Waiting for processing (timeout: %ds)...", flagCovTimeout)
-		timeout := time.Duration(flagCovTimeout) * time.Second
-		status, err := client.PollCoverageStatus(orgSlug, repoID, initResp.UploadID, timeout)
-		if err != nil {
-			if status != nil && status.Status == "failed" {
-				return &ExitError{Code: exitcode.UploadError, Err: err}
-			}
-			return &ExitError{Code: exitcode.Timeout, Err: err}
+	output.Info("Waiting for processing (timeout: %ds)...", flagUploadTimeout)
+	status, err := ctx.client.PollCoverageStatus(ctx.orgSlug, ctx.repoID, uploadID, ctx.pollTimeout())
+	if err != nil {
+		if status != nil && status.Status == "failed" {
+			return &ExitError{Code: exitcode.UploadError, Err: err}
 		}
+		return &ExitError{Code: exitcode.Timeout, Err: err}
+	}
 
-		output.Info("")
-		output.Info("Coverage Summary")
-		if status.CoverageRate != nil {
-			output.Info("  Coverage rate: %s%%", *status.CoverageRate)
-		}
-		if status.FileCount != nil {
-			output.Info("  Files:         %d", *status.FileCount)
-		}
+	result.Uploads[0].Result = status
+	setResult(result)
 
-		// Display coverage diff results if present
-		if status.CoverageDiff != nil {
-			return printCoverageDiff(status.CoverageDiff, prNumber)
-		}
+	output.Info("")
+	output.Info("Coverage Summary")
+	if status.CoverageRate != nil {
+		output.Info("  Coverage rate: %s%%", *status.CoverageRate)
+	}
+	if status.FileCount != nil {
+		output.Info("  Files:         %d", *status.FileCount)
+	}
+
+	if status.CoverageDiff != nil {
+		return printCoverageDiff(status.CoverageDiff, ctx.prNumber)
 	}
 
 	return nil

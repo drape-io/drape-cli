@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"os"
 	"regexp"
 	"strings"
 
@@ -14,20 +15,40 @@ import (
 
 // Global flags
 var (
-	flagOrg    string
-	flagRepo   string
-	flagToken  string
-	flagAPIURL string
+	flagOrg     string
+	flagRepo    string
+	flagToken   string
+	flagAPIURL  string
 	flagVerbose bool
 	flagDryRun  bool
+	flagJSON    bool
+	flagQuiet   bool
 )
+
+// pendingJSON holds the result to be emitted as JSON after command execution.
+// Commands call setResult() to populate this; Execute() emits it.
+var pendingJSON any
+
+// setResult stores a result for JSON emission after the command completes.
+// This is the single place commands register their output; Execute() handles
+// the actual emission, ensuring JSON is written even when commands return errors.
+func setResult(v any) {
+	pendingJSON = v
+}
 
 var rootCmd = &cobra.Command{
 	Use:   "drape",
 	Short: "Drape CLI — upload test results and coverage to Drape",
 	Long:  "The Drape CLI integrates your CI pipeline with Drape for test analytics, flakiness detection, and quarantine management.",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if flagQuiet {
+			flagJSON = true
+		}
 		output.SetVerbose(flagVerbose)
+		output.SetQuiet(flagQuiet)
+		if flagJSON {
+			output.Stdout = os.Stderr
+		}
 	},
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -40,12 +61,25 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "API base URL (env: DRAPE_API_URL, default: https://app.drape.io)")
 	rootCmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "Verbose logging")
 	rootCmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "Parse and validate locally, don't upload")
+	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output results as JSON to stdout")
+	rootCmd.PersistentFlags().BoolVar(&flagQuiet, "quiet", false, "Suppress all human-readable output (implies --json)")
 }
 
 // Execute runs the root command and returns an exit code.
 func Execute() int {
-	if err := rootCmd.Execute(); err != nil {
-		// Check if the error wraps an exit code
+	pendingJSON = nil
+
+	err := rootCmd.Execute()
+
+	// Emit JSON result if available — even on error, so the consumer
+	// can parse partial results (e.g. scan with policy failures).
+	if flagJSON && pendingJSON != nil {
+		if jsonErr := output.JSON(pendingJSON); jsonErr != nil {
+			output.Error("failed to write JSON output: %v", jsonErr)
+		}
+	}
+
+	if err != nil {
 		if coded, ok := err.(*ExitError); ok {
 			output.Error("%v", coded.Err)
 			return coded.Code
@@ -73,7 +107,6 @@ func enhanceCobraError(err error) string {
 	}
 
 	if strings.Contains(msg, "unknown flag") || strings.Contains(msg, "unknown shorthand flag") {
-		// Extract the flag name for a better message
 		return "hint: run the command with --help to see available flags."
 	}
 
