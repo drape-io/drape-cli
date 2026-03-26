@@ -37,6 +37,58 @@ func runValidateTests(cmd *cobra.Command, args []string) error {
 
 	output.Info("Found %d file(s) to validate", len(files))
 
+	results, total, parseErrors := validateJUnitFiles(files)
+
+	for _, r := range results {
+		output.Verbose("  %s: %d tests (%d passed, %d failed, %d skipped, %d errors)",
+			r.Filename, r.Summary.Total, r.Summary.Passed, r.Summary.Failed, r.Summary.Skipped, r.Summary.Errored)
+	}
+
+	if parseErrors > 0 && len(results) == 0 {
+		return &ExitError{Code: exitcode.ParseError, Err: fmt.Errorf("failed to parse any test result files")}
+	}
+
+	output.Info("")
+	output.Info("Validation Summary")
+	output.Info("  Files:   %d valid, %d failed to parse", len(results), parseErrors)
+	output.Info("  Tests:   %d total", total.Total)
+	output.Info("  Passed:  %d", total.Passed)
+	output.Info("  Failed:  %d", total.Failed)
+	output.Info("  Skipped: %d", total.Skipped)
+	output.Info("  Errors:  %d", total.Errored)
+
+	if flagJSON {
+		var jsonFiles []TestsDryRunFile
+		for _, r := range results {
+			jsonFiles = append(jsonFiles, TestsDryRunFile{
+				Filename: r.Filename,
+				Total:    r.Summary.Total,
+				Passed:   r.Summary.Passed,
+				Failed:   r.Summary.Failed,
+				Skipped:  r.Summary.Skipped,
+				Errored:  r.Summary.Errored,
+			})
+		}
+		setResult(TestsDryRunResult{DryRun: true, Files: jsonFiles})
+	}
+
+	if parseErrors > 0 {
+		return &ExitError{Code: exitcode.ParseError, Err: fmt.Errorf("%d file(s) failed to parse", parseErrors)}
+	}
+
+	return nil
+}
+
+// validatedFile holds the result of parsing a single JUnit XML file.
+type validatedFile struct {
+	Filename string
+	Summary  junit.Summary
+}
+
+// validateJUnitFiles parses each file and returns per-file results, an overall
+// summary, and the number of files that failed to parse.
+func validateJUnitFiles(files []string) ([]validatedFile, junit.Summary, int) {
+	var results []validatedFile
 	var allCases []junit.TestCase
 	var parseErrors int
 
@@ -56,30 +108,15 @@ func runValidateTests(cmd *cobra.Command, args []string) error {
 		}
 
 		summary := junit.Summarize(cases)
-		output.Verbose("  %s: %d tests (%d passed, %d failed, %d skipped, %d errors)",
-			filepath.Base(f), summary.Total, summary.Passed, summary.Failed, summary.Skipped, summary.Errored)
+		results = append(results, validatedFile{
+			Filename: filepath.Base(f),
+			Summary:  summary,
+		})
 		allCases = append(allCases, cases...)
 	}
 
-	if parseErrors > 0 && len(allCases) == 0 {
-		return &ExitError{Code: exitcode.ParseError, Err: fmt.Errorf("failed to parse any test result files")}
-	}
-
-	summary := junit.Summarize(allCases)
-	output.Info("")
-	output.Info("Validation Summary")
-	output.Info("  Files:   %d valid, %d failed to parse", len(files)-parseErrors, parseErrors)
-	output.Info("  Tests:   %d total", summary.Total)
-	output.Info("  Passed:  %d", summary.Passed)
-	output.Info("  Failed:  %d", summary.Failed)
-	output.Info("  Skipped: %d", summary.Skipped)
-	output.Info("  Errors:  %d", summary.Errored)
-
-	if parseErrors > 0 {
-		return &ExitError{Code: exitcode.ParseError, Err: fmt.Errorf("%d file(s) failed to parse", parseErrors)}
-	}
-
-	return nil
+	total := junit.Summarize(allCases)
+	return results, total, parseErrors
 }
 
 // expandGlobs expands glob patterns (including ** recursive patterns) into file paths.

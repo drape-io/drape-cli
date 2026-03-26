@@ -4,32 +4,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/drape-io/drape-cli/internal/api"
-	"github.com/drape-io/drape-cli/internal/cidetect"
 	"github.com/drape-io/drape-cli/internal/exitcode"
 	"github.com/drape-io/drape-cli/internal/output"
 )
 
 var (
-	flagScanBranch          string
-	flagScanSHA             string
-	flagScanFormat          string
-	flagScanName            string
-	flagScanTag             string
-	flagScanType            string
-	flagScanWait            bool
-	flagScanTimeout         int
-	flagScanFailOnVulns     bool
-	flagScanFailOnSeverity  string
+	flagScanFormat         string
+	flagScanName           string
+	flagScanTag            string
+	flagScanType           string
+	flagScanFailOnVulns    bool
+	flagScanFailOnSeverity string
 )
 
 // severityRank maps severity names to a numeric rank for comparison.
-// Higher rank = more severe. Unknown/unrecognized severities get rank 0.
 var severityRank = map[string]int{
 	"critical": 4,
 	"high":     3,
@@ -40,7 +32,6 @@ var severityRank = map[string]int{
 
 var validSeverities = []string{"critical", "high", "medium", "low", "any"}
 
-// severityMeetsThreshold returns true if the given severity is at or above the threshold.
 func severityMeetsThreshold(severity, threshold string) bool {
 	if threshold == "any" {
 		return true
@@ -57,14 +48,10 @@ var uploadScanCmd = &cobra.Command{
 }
 
 func init() {
-	uploadScanCmd.Flags().StringVar(&flagScanBranch, "branch", "", "Git branch (auto-detected from CI)")
-	uploadScanCmd.Flags().StringVar(&flagScanSHA, "sha", "", "Git commit SHA (auto-detected from CI)")
 	uploadScanCmd.Flags().StringVar(&flagScanFormat, "format", "sarif", "Scan report format: sarif, cyclonedx (default: sarif)")
 	uploadScanCmd.Flags().StringVar(&flagScanName, "scan-name", "", "Scan name (e.g. docker image name, tool name)")
 	uploadScanCmd.Flags().StringVar(&flagScanTag, "scan-tag", "", "Scan tag (e.g. image tag, version)")
 	uploadScanCmd.Flags().StringVar(&flagScanType, "scan-type", "", "Scan type: image, dependency (default: auto-detect from format)")
-	uploadScanCmd.Flags().BoolVar(&flagScanWait, "wait", true, "Wait for server-side processing")
-	uploadScanCmd.Flags().IntVar(&flagScanTimeout, "timeout", 120, "Max wait time in seconds")
 	uploadScanCmd.Flags().BoolVar(&flagScanFailOnVulns, "fail-on-vulnerabilities", false, "Exit non-zero if unsuppressed vulnerabilities are found")
 	uploadScanCmd.Flags().StringVar(&flagScanFailOnSeverity, "fail-on-severity", "medium", "Minimum severity to fail on: critical, high, medium, low, any (default: medium)")
 
@@ -94,54 +81,29 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 
 	output.Info("Found %d file(s) to upload", len(files))
 
-	ci := cidetect.Detect(os.Getenv)
-	if ci == nil {
-		ci = cidetect.DetectFromGit()
-	}
-
-	branch := resolveGitContext(flagScanBranch, ci, func(info *cidetect.CIInfo) string { return info.Branch })
-	sha := resolveGitContext(flagScanSHA, ci, func(info *cidetect.CIInfo) string { return info.CommitSHA })
-
-	if branch == "" {
-		return &ExitError{Code: exitcode.UsageError, Err: errMissing("--branch (could not auto-detect)")}
-	}
-	if sha == "" {
-		return &ExitError{Code: exitcode.UsageError, Err: errMissing("--sha (could not auto-detect)")}
+	ctx, err := newUploadContext()
+	if err != nil {
+		return err
 	}
 
 	if flagDryRun {
+		var dryFiles []string
 		for _, f := range files {
-			output.Info("[dry-run] Would upload %s (format: %s, branch: %s, sha: %s)", filepath.Base(f), flagScanFormat, branch, sha)
+			output.Info("[dry-run] Would upload %s (format: %s, branch: %s, sha: %s)", filepath.Base(f), flagScanFormat, ctx.branch, ctx.sha)
+			dryFiles = append(dryFiles, filepath.Base(f))
+		}
+		if flagJSON {
+			setResult(DryRunResult{DryRun: true, Files: dryFiles})
 		}
 		return nil
 	}
 
-	orgSlug, err := resolveOrg()
-	if err != nil {
+	if err := ctx.resolveClient(); err != nil {
 		return err
 	}
 
-	client, err := newClient()
-	if err != nil {
-		return err
-	}
-
-	repoID, err := resolveRepoID(client, orgSlug)
-	if err != nil {
-		return err
-	}
-
-	prNumber := 0
-	if ci != nil && ci.PRNumber != "" {
-		prNumber, _ = strconv.Atoi(ci.PRNumber)
-	}
-
-	type uploadResult struct {
-		uploadID int
-		filename string
-	}
-
-	var uploads []uploadResult
+	// Upload each file
+	result := UploadResult{FilesMatched: len(files)}
 	var uploadErrors int
 
 	for _, f := range files {
@@ -167,120 +129,65 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 		if flagScanType != "" {
 			metadata["scan_type"] = flagScanType
 		}
-		if prNumber != 0 {
-			metadata["pr_number"] = prNumber
+		if ctx.prNumber != 0 {
+			metadata["pr_number"] = ctx.prNumber
 		}
 
-		initResp, err := client.InitiateUpload(orgSlug, repoID, api.UploadInitiateRequest{
-			UploadType: "scan_results",
-			Branch:     branch,
-			SHA:        sha,
-			Filename:   filename,
-			Metadata:   metadata,
-		})
+		uploadID, err := ctx.uploadFile("scan_results", filename, data, metadata)
 		if err != nil {
-			output.Error("Failed to initiate upload for %s: %v", filename, err)
+			output.Error("Failed to upload %s: %v", filename, err)
 			uploadErrors++
 			continue
 		}
 
-		if err := client.UploadToPresignedURL(initResp.UploadURL, data); err != nil {
-			output.Error("Failed to upload %s to storage: %v", filename, err)
-			uploadErrors++
-			continue
-		}
-
-		if err := client.CompleteUpload(orgSlug, repoID, initResp.UploadID); err != nil {
-			output.Error("Failed to complete upload for %s: %v", filename, err)
-			uploadErrors++
-			continue
-		}
-
-		output.Verbose("  %s: upload initiated (ID: %d)", filename, initResp.UploadID)
-		uploads = append(uploads, uploadResult{uploadID: initResp.UploadID, filename: filename})
+		output.Verbose("  %s: upload initiated (ID: %d)", filename, uploadID)
+		result.Uploads = append(result.Uploads, UploadEntry{Filename: filename, UploadID: uploadID, DrapeURL: ctx.drapeURL(uploadID)})
 	}
 
-	if uploadErrors > 0 && len(uploads) == 0 {
+	result.FilesUploaded = len(result.Uploads)
+
+	if uploadErrors > 0 && len(result.Uploads) == 0 {
 		return &ExitError{Code: exitcode.UploadError, Err: fmt.Errorf("all uploads failed")}
 	}
 
-	output.Info("Uploaded %d/%d file(s)", len(uploads), len(files))
+	output.Info("Uploaded %d/%d file(s)", result.FilesUploaded, len(files))
 
-	if !flagScanWait {
-		for _, u := range uploads {
-			output.Info("  %s: processing (ID: %d)", u.filename, u.uploadID)
+	if !flagUploadWait {
+		for _, u := range result.Uploads {
+			output.Info("  %s: processing (ID: %d)", u.Filename, u.UploadID)
 		}
+		setResult(result)
 		return nil
 	}
 
-	output.Info("Waiting for processing (timeout: %ds)...", flagScanTimeout)
-	timeout := time.Duration(flagScanTimeout) * time.Second
+	output.Info("Waiting for processing (timeout: %ds)...", flagUploadTimeout)
 
 	var lastDiffErr error
 	var processingErrors int
 	var hasUnsuppressedVulns bool
 
-	for _, u := range uploads {
-		status, err := client.PollScanStatus(orgSlug, repoID, u.uploadID, timeout)
+	for i, u := range result.Uploads {
+		status, err := ctx.client.PollScanStatus(ctx.orgSlug, ctx.repoID, u.UploadID, ctx.pollTimeout())
 		if err != nil {
 			if status != nil && status.Status == "failed" {
-				output.Error("  %s: processing failed: %v", u.filename, err)
+				output.Error("  %s: processing failed: %v", u.Filename, err)
+				result.Uploads[i].Result = status
 				processingErrors++
 				continue
 			}
 			return &ExitError{Code: exitcode.Timeout, Err: err}
 		}
 
-		// Display summary per file
-		output.Info("")
-		output.Info("Scan Summary (%s)", u.filename)
-		if status.ScanName != nil {
-			output.Info("  Scan:            %s", *status.ScanName)
-		}
-		if status.TotalVulnerabilities != nil {
-			output.Info("  Vulnerabilities: %d", *status.TotalVulnerabilities)
-		}
-		if status.UnsuppressedVulnerabilities != nil {
-			suppressed := 0
-			if status.TotalVulnerabilities != nil {
-				suppressed = *status.TotalVulnerabilities - *status.UnsuppressedVulnerabilities
-			}
-			if suppressed > 0 {
-				output.Info("  Suppressed:      %d", suppressed)
-				output.Info("  Unsuppressed:    %d", *status.UnsuppressedVulnerabilities)
-			}
-		}
-		if status.UnsuppressedHighestSeverity != nil {
-			output.Info("  Highest:         %s", *status.UnsuppressedHighestSeverity)
-		} else if status.HighestSeverity != nil {
-			output.Info("  Highest:         %s", *status.HighestSeverity)
-		}
+		result.Uploads[i].Result = status
 
-		// Track whether any scan has unsuppressed vulnerabilities that meet the severity threshold
+		printScanSummary(u.Filename, status)
+
 		if flagScanFailOnVulns {
-			vulnCount := 0
-			if status.UnsuppressedVulnerabilities != nil {
-				vulnCount = *status.UnsuppressedVulnerabilities
-			} else if status.TotalVulnerabilities != nil {
-				// Fall back to total if server doesn't return unsuppressed count
-				vulnCount = *status.TotalVulnerabilities
-			}
-			if vulnCount > 0 {
-				// Check if the highest unsuppressed severity meets the threshold
-				highestSev := ""
-				if status.UnsuppressedHighestSeverity != nil {
-					highestSev = *status.UnsuppressedHighestSeverity
-				} else if status.HighestSeverity != nil {
-					highestSev = *status.HighestSeverity
-				}
-				if severityMeetsThreshold(highestSev, flagScanFailOnSeverity) {
-					hasUnsuppressedVulns = true
-				}
-			}
+			hasUnsuppressedVulns = hasUnsuppressedVulns || checkScanVulns(status)
 		}
 
 		if status.ScanDiff != nil {
-			if err := printScanDiff(status.ScanDiff, prNumber); err != nil {
+			if err := printScanDiff(status.ScanDiff, ctx.prNumber); err != nil {
 				lastDiffErr = err
 			}
 		}
@@ -294,21 +201,67 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 		output.Info("Process errors: %d", processingErrors)
 	}
 
-	if processingErrors > 0 && len(uploads) == processingErrors {
+	if processingErrors > 0 && len(result.Uploads) == processingErrors {
 		return &ExitError{Code: exitcode.UploadError, Err: fmt.Errorf("all processing failed")}
 	}
 
-	// Return the last diff failure if any scan diff failed policy
+	// Always set result so JSON is emitted even on policy failure
+	setResult(result)
+
 	if lastDiffErr != nil {
 		return lastDiffErr
 	}
 
-	// Fail if --fail-on-vulnerabilities is set and unsuppressed vulnerabilities exist
 	if flagScanFailOnVulns && hasUnsuppressedVulns {
 		return &ExitError{Code: exitcode.ScanFailure, Err: fmt.Errorf("unsuppressed vulnerabilities found")}
 	}
 
 	return nil
+}
+
+func printScanSummary(filename string, status *api.ScanStatusResponse) {
+	output.Info("")
+	output.Info("Scan Summary (%s)", filename)
+	if status.ScanName != nil {
+		output.Info("  Scan:            %s", *status.ScanName)
+	}
+	if status.TotalVulnerabilities != nil {
+		output.Info("  Vulnerabilities: %d", *status.TotalVulnerabilities)
+	}
+	if status.UnsuppressedVulnerabilities != nil {
+		suppressed := 0
+		if status.TotalVulnerabilities != nil {
+			suppressed = *status.TotalVulnerabilities - *status.UnsuppressedVulnerabilities
+		}
+		if suppressed > 0 {
+			output.Info("  Suppressed:      %d", suppressed)
+			output.Info("  Unsuppressed:    %d", *status.UnsuppressedVulnerabilities)
+		}
+	}
+	if status.UnsuppressedHighestSeverity != nil {
+		output.Info("  Highest:         %s", *status.UnsuppressedHighestSeverity)
+	} else if status.HighestSeverity != nil {
+		output.Info("  Highest:         %s", *status.HighestSeverity)
+	}
+}
+
+func checkScanVulns(status *api.ScanStatusResponse) bool {
+	vulnCount := 0
+	if status.UnsuppressedVulnerabilities != nil {
+		vulnCount = *status.UnsuppressedVulnerabilities
+	} else if status.TotalVulnerabilities != nil {
+		vulnCount = *status.TotalVulnerabilities
+	}
+	if vulnCount == 0 {
+		return false
+	}
+	highestSev := ""
+	if status.UnsuppressedHighestSeverity != nil {
+		highestSev = *status.UnsuppressedHighestSeverity
+	} else if status.HighestSeverity != nil {
+		highestSev = *status.HighestSeverity
+	}
+	return severityMeetsThreshold(highestSev, flagScanFailOnSeverity)
 }
 
 func printScanDiff(diff *api.ScanDiffInfo, prNumber int) error {
