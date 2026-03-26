@@ -25,6 +25,8 @@ linters:
         - G704
         # Unhandled errors - errcheck linter covers this better
         - G104
+        # Integer overflow on bounded retry counter (max 3 attempts)
+        - G115
     gocritic:
       enabled-tags:
         - diagnostic
