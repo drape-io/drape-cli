@@ -175,7 +175,7 @@ func (ctx *uploadContext) uploadFiles(uploadType string, files []string, metadat
 
 // dryRunSimple handles the generic dry-run output for commands that don't do local validation.
 func (ctx *uploadContext) dryRunSimple(files []string, format string) {
-	var names []string
+	names := make([]string, 0, len(files))
 	for _, f := range files {
 		name := filepath.Base(f)
 		output.Info("[dry-run] Would upload %s (format: %s, branch: %s, sha: %s)", name, format, ctx.branch, ctx.sha)

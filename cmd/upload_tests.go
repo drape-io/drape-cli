@@ -203,7 +203,7 @@ func dryRunValidate(files []string) error {
 		total.Total, total.Passed, total.Failed, total.Skipped, total.Errored)
 
 	if flagJSON {
-		var jsonFiles []TestsDryRunFile
+		jsonFiles := make([]TestsDryRunFile, 0, len(results))
 		for _, r := range results {
 			jsonFiles = append(jsonFiles, TestsDryRunFile{
 				Filename: r.Filename,
