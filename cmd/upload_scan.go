@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -87,14 +85,7 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 	}
 
 	if flagDryRun {
-		var dryFiles []string
-		for _, f := range files {
-			output.Info("[dry-run] Would upload %s (format: %s, branch: %s, sha: %s)", filepath.Base(f), flagScanFormat, ctx.branch, ctx.sha)
-			dryFiles = append(dryFiles, filepath.Base(f))
-		}
-		if flagJSON {
-			setResult(DryRunResult{DryRun: true, Files: dryFiles})
-		}
+		ctx.dryRunSimple(files, flagScanFormat)
 		return nil
 	}
 
@@ -103,20 +94,7 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 	}
 
 	// Upload each file
-	result := UploadResult{FilesMatched: len(files)}
-	var uploadErrors int
-
-	for _, f := range files {
-		data, err := os.ReadFile(filepath.Clean(f)) //nolint:gosec // G304: path is from CLI args + glob expansion
-		if err != nil {
-			output.Error("Failed to read %s: %v", f, err)
-			uploadErrors++
-			continue
-		}
-
-		filename := filepath.Base(f)
-		output.Verbose("Uploading %s (%d bytes)...", filename, len(data))
-
+	result, uploadErrors := ctx.uploadFiles("scan_results", files, func(_ string) map[string]any {
 		metadata := map[string]any{
 			"format": flagScanFormat,
 		}
@@ -132,22 +110,10 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 		if ctx.prNumber != 0 {
 			metadata["pr_number"] = ctx.prNumber
 		}
-
-		uploadID, err := ctx.uploadFile("scan_results", filename, data, metadata)
-		if err != nil {
-			output.Error("Failed to upload %s: %v", filename, err)
-			uploadErrors++
-			continue
-		}
-
-		output.Verbose("  %s: upload initiated (ID: %d)", filename, uploadID)
-		result.Uploads = append(result.Uploads, UploadEntry{Filename: filename, UploadID: uploadID, DrapeURL: ctx.drapeURL(uploadID)})
-	}
-
-	result.FilesUploaded = len(result.Uploads)
-
-	if uploadErrors > 0 && len(result.Uploads) == 0 {
-		return &ExitError{Code: exitcode.UploadError, Err: fmt.Errorf("all uploads failed")}
+		return metadata
+	})
+	if err := checkAllFailed(uploadErrors, result.Uploads); err != nil {
+		return err
 	}
 
 	output.Info("Uploaded %d/%d file(s)", result.FilesUploaded, len(files))

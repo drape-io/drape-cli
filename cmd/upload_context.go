@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -137,6 +138,60 @@ func (ctx *uploadContext) pollTimeout() time.Duration {
 func (ctx *uploadContext) drapeURL(uploadID int) string {
 	baseURL := ctx.client.BaseURL
 	return fmt.Sprintf("%s/orgs/%s/repos/%s/uploads/%d", baseURL, ctx.orgSlug, ctx.repoName, uploadID)
+}
+
+// uploadFiles reads, uploads, and returns results for each file.
+// metadataFn is called per file to allow per-file metadata (e.g. scan) or static metadata.
+func (ctx *uploadContext) uploadFiles(uploadType string, files []string, metadataFn func(string) map[string]any) (UploadResult, int) {
+	result := UploadResult{FilesMatched: len(files)}
+	var uploadErrors int
+
+	for _, f := range files {
+		data, err := os.ReadFile(filepath.Clean(f)) //nolint:gosec // G304: path is from CLI args + glob expansion
+		if err != nil {
+			output.Error("Failed to read %s: %v", f, err)
+			uploadErrors++
+			continue
+		}
+
+		filename := filepath.Base(f)
+		output.Verbose("Uploading %s (%d bytes)...", filename, len(data))
+
+		metadata := metadataFn(filename)
+		uploadID, err := ctx.uploadFile(uploadType, filename, data, metadata)
+		if err != nil {
+			output.Error("Failed to upload %s: %v", filename, err)
+			uploadErrors++
+			continue
+		}
+
+		output.Verbose("  %s: upload initiated (ID: %d)", filename, uploadID)
+		result.Uploads = append(result.Uploads, UploadEntry{Filename: filename, UploadID: uploadID, DrapeURL: ctx.drapeURL(uploadID)})
+	}
+
+	result.FilesUploaded = len(result.Uploads)
+	return result, uploadErrors
+}
+
+// dryRunSimple handles the generic dry-run output for commands that don't do local validation.
+func (ctx *uploadContext) dryRunSimple(files []string, format string) {
+	names := make([]string, 0, len(files))
+	for _, f := range files {
+		name := filepath.Base(f)
+		output.Info("[dry-run] Would upload %s (format: %s, branch: %s, sha: %s)", name, format, ctx.branch, ctx.sha)
+		names = append(names, name)
+	}
+	if flagJSON {
+		setResult(DryRunResult{DryRun: true, Files: names})
+	}
+}
+
+// checkAllFailed returns an ExitError if every upload failed.
+func checkAllFailed(uploadErrors int, uploads []UploadEntry) error {
+	if uploadErrors > 0 && len(uploads) == 0 {
+		return &ExitError{Code: exitcode.UploadError, Err: fmt.Errorf("all uploads failed")}
+	}
+	return nil
 }
 
 // resolveGitContext returns the flag value if set, otherwise the CI-detected value.

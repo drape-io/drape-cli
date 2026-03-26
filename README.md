@@ -79,7 +79,7 @@ drape upload tests "./reports/**/*.xml" \
   --timeout 120
 ```
 
-When `--wait` is used (default), the CLI waits for server-side processing and prints a summary including quarantine status. Exit code reflects whether non-quarantined failures exist.
+When `--wait` is used (default), the CLI waits for server-side processing and prints a summary including suppression status. Exit code reflects whether unsuppressed failures exist.
 
 ### `drape upload coverage <file>`
 
@@ -150,7 +150,7 @@ Print CLI version information.
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Test failure (unquarantined failures exist) |
+| 1 | Test failure (unsuppressed failures exist) |
 | 2 | Usage error (invalid flags, missing required args) |
 | 3 | Upload error (network, auth, or API error) |
 | 4 | Timeout (server processing took too long) |

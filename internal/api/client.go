@@ -91,6 +91,15 @@ func (c *Client) doWithRetries(req *http.Request) (*http.Response, error) {
 			delay := time.Second << (attempt - 1)
 			output.Verbose("Retrying request after %v (attempt %d/%d)", delay, attempt+1, maxRetries)
 			time.Sleep(delay)
+
+			// Reset body for retries if body supports seeking (e.g. bytes.Reader)
+			if req.Body != nil {
+				if seeker, ok := req.Body.(io.Seeker); ok {
+					if _, err := seeker.Seek(0, io.SeekStart); err != nil {
+						return nil, fmt.Errorf("resetting request body for retry: %w", err)
+					}
+				}
+			}
 		}
 
 		resp, err := c.HTTPClient.Do(req) //nolint:gosec // G704: BaseURL is validated in NewClient

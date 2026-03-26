@@ -71,24 +71,36 @@ func (c *Client) InitiateUpload(orgSlug string, repoID int, req UploadInitiateRe
 
 // UploadToPresignedURL uploads file content to a presigned URL.
 func (c *Client) UploadToPresignedURL(presignedURL string, content []byte) error {
-	req, err := http.NewRequest("PUT", presignedURL, bytes.NewReader(content))
+	body := &seekableReadCloser{bytes.NewReader(content)}
+	req, err := http.NewRequest("PUT", presignedURL, body)
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
+	// Preserve the seekable body — NewRequest may wrap it with NopCloser.
+	req.Body = body
+	req.ContentLength = int64(len(content))
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.doWithRetries(req)
 	if err != nil {
 		return fmt.Errorf("uploading to presigned URL: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("presigned upload failed with status %d: %s", resp.StatusCode, string(body))
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("presigned upload failed with status %d: %s", resp.StatusCode, string(respBody))
 	}
 	return nil
 }
+
+// seekableReadCloser wraps a bytes.Reader so it satisfies io.ReadCloser and io.Seeker,
+// allowing doWithRetries to reset the body on retry.
+type seekableReadCloser struct {
+	*bytes.Reader
+}
+
+func (s *seekableReadCloser) Close() error { return nil }
 
 // CompleteUpload marks an upload as complete and triggers processing.
 func (c *Client) CompleteUpload(orgSlug string, repoID, uploadID int) error {

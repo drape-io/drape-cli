@@ -39,7 +39,7 @@ func setResult(v any) {
 var rootCmd = &cobra.Command{
 	Use:   "drape",
 	Short: "Drape CLI — upload test results and coverage to Drape",
-	Long:  "The Drape CLI integrates your CI pipeline with Drape for test analytics, flakiness detection, and quarantine management.",
+	Long:  "The Drape CLI integrates your CI pipeline with Drape for test analytics, flakiness detection, and suppression management.",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if flagQuiet {
 			flagJSON = true

@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -93,35 +91,9 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 	}
 
 	// Upload each file
-	result := UploadResult{FilesMatched: len(files)}
-	var uploadErrors int
-
-	for _, f := range files {
-		data, err := os.ReadFile(filepath.Clean(f)) //nolint:gosec // G304: path is from CLI args + glob expansion
-		if err != nil {
-			output.Error("Failed to read %s: %v", f, err)
-			uploadErrors++
-			continue
-		}
-
-		filename := filepath.Base(f)
-		output.Verbose("Uploading %s (%d bytes)...", filename, len(data))
-
-		uploadID, err := ctx.uploadFile("test_results", filename, data, metadata)
-		if err != nil {
-			output.Error("Failed to upload %s: %v", filename, err)
-			uploadErrors++
-			continue
-		}
-
-		output.Verbose("  %s: upload initiated (ID: %d)", filename, uploadID)
-		result.Uploads = append(result.Uploads, UploadEntry{Filename: filename, UploadID: uploadID, DrapeURL: ctx.drapeURL(uploadID)})
-	}
-
-	result.FilesUploaded = len(result.Uploads)
-
-	if uploadErrors > 0 && len(result.Uploads) == 0 {
-		return &ExitError{Code: exitcode.UploadError, Err: fmt.Errorf("all uploads failed")}
+	result, uploadErrors := ctx.uploadFiles("test_results", files, func(_ string) map[string]any { return metadata })
+	if err := checkAllFailed(uploadErrors, result.Uploads); err != nil {
+		return err
 	}
 
 	output.Info("Uploaded %d/%d file(s)", result.FilesUploaded, len(files))
@@ -137,9 +109,9 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 	output.Info("Waiting for processing (timeout: %ds)...", flagUploadTimeout)
 
 	var totalIngested int
-	var totalQuarantined int
+	var totalSuppressed int
 	var totalFailed int
-	var totalUnquarantinedFailures int
+	var totalUnsuppressedFailures int
 	var processingErrors int
 
 	for i, u := range result.Uploads {
@@ -163,14 +135,14 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 		output.Verbose("  %s: %d tests ingested", u.Filename, ingested)
 
 		totalIngested += ingested
-		if status.QuarantinedCount != nil {
-			totalQuarantined += *status.QuarantinedCount
+		if status.SuppressedCount != nil {
+			totalSuppressed += *status.SuppressedCount
 		}
 		if status.FailedCount != nil {
 			totalFailed += *status.FailedCount
 		}
-		if status.UnquarantinedFailureCount != nil {
-			totalUnquarantinedFailures += *status.UnquarantinedFailureCount
+		if status.UnsuppressedFailureCount != nil {
+			totalUnsuppressedFailures += *status.UnsuppressedFailureCount
 		}
 	}
 
@@ -184,8 +156,8 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 	if totalFailed > 0 {
 		output.Info("  Failed tests:   %d", totalFailed)
 	}
-	if totalQuarantined > 0 {
-		output.Info("  Quarantined:    %d", totalQuarantined)
+	if totalSuppressed > 0 {
+		output.Info("  Suppressed:     %d", totalSuppressed)
 	}
 	if uploadErrors > 0 {
 		output.Info("  Upload errors:  %d", uploadErrors)
@@ -194,14 +166,23 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 		output.Info("  Process errors: %d", processingErrors)
 	}
 
-	if totalFailed > 0 && totalUnquarantinedFailures == 0 {
+	return testUploadExitError(totalFailed, totalUnsuppressedFailures, processingErrors, totalIngested)
+}
+
+// testUploadExitError determines the exit code after test upload processing.
+func testUploadExitError(totalFailed, totalUnsuppressedFailures, processingErrors, totalIngested int) error {
+	if totalFailed > 0 && totalUnsuppressedFailures == 0 {
 		output.Info("")
-		output.Info("All %d failure(s) are quarantined — passing CI", totalFailed)
+		output.Info("All %d failure(s) are suppressed — passing CI", totalFailed)
 		return nil
 	}
 
 	if processingErrors > 0 && totalIngested == 0 {
 		return &ExitError{Code: exitcode.UploadError, Err: fmt.Errorf("all processing failed")}
+	}
+
+	if totalUnsuppressedFailures > 0 {
+		return &ExitError{Code: exitcode.TestFailure, Err: fmt.Errorf("%d unsuppressed test failure(s)", totalUnsuppressedFailures)}
 	}
 
 	return nil
@@ -221,12 +202,8 @@ func dryRunValidate(files []string) error {
 	output.Info("[dry-run] Total: %d tests (%d passed, %d failed, %d skipped, %d errors)",
 		total.Total, total.Passed, total.Failed, total.Skipped, total.Errored)
 
-	if parseErrors > 0 {
-		return &ExitError{Code: exitcode.ParseError, Err: fmt.Errorf("%d file(s) failed to parse", parseErrors)}
-	}
-
 	if flagJSON {
-		var jsonFiles []TestsDryRunFile
+		jsonFiles := make([]TestsDryRunFile, 0, len(results))
 		for _, r := range results {
 			jsonFiles = append(jsonFiles, TestsDryRunFile{
 				Filename: r.Filename,
@@ -239,5 +216,10 @@ func dryRunValidate(files []string) error {
 		}
 		setResult(TestsDryRunResult{DryRun: true, Files: jsonFiles})
 	}
+
+	if parseErrors > 0 {
+		return &ExitError{Code: exitcode.ParseError, Err: fmt.Errorf("%d file(s) failed to parse", parseErrors)}
+	}
+
 	return nil
 }

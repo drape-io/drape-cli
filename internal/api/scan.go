@@ -83,27 +83,12 @@ func mapScanStatus(raw *UploadStatusResponse) *ScanStatusResponse {
 		return result
 	}
 
-	if v, ok := raw.Result["scan_id"].(float64); ok {
-		id := int(v)
-		result.ScanID = &id
-	}
-	if v, ok := raw.Result["scan_name"].(string); ok {
-		result.ScanName = &v
-	}
-	if v, ok := raw.Result["total_vulnerabilities"].(float64); ok {
-		count := int(v)
-		result.TotalVulnerabilities = &count
-	}
-	if v, ok := raw.Result["highest_severity"].(string); ok {
-		result.HighestSeverity = &v
-	}
-	if v, ok := raw.Result["unsuppressed_vulnerabilities"].(float64); ok {
-		count := int(v)
-		result.UnsuppressedVulnerabilities = &count
-	}
-	if v, ok := raw.Result["unsuppressed_highest_severity"].(string); ok {
-		result.UnsuppressedHighestSeverity = &v
-	}
+	result.ScanID = getInt(raw.Result, "scan_id")
+	result.ScanName = getString(raw.Result, "scan_name")
+	result.TotalVulnerabilities = getInt(raw.Result, "total_vulnerabilities")
+	result.HighestSeverity = getString(raw.Result, "highest_severity")
+	result.UnsuppressedVulnerabilities = getInt(raw.Result, "unsuppressed_vulnerabilities")
+	result.UnsuppressedHighestSeverity = getString(raw.Result, "unsuppressed_highest_severity")
 	if diffMap, ok := raw.Result["scan_diff"].(map[string]any); ok {
 		result.ScanDiff = mapScanDiff(diffMap)
 	}
@@ -112,28 +97,15 @@ func mapScanStatus(raw *UploadStatusResponse) *ScanStatusResponse {
 }
 
 func mapScanDiff(m map[string]any) *ScanDiffInfo {
-	diff := &ScanDiffInfo{}
-
-	if v, ok := m["passed"].(bool); ok {
-		diff.Passed = v
-	}
-	if v, ok := m["new_critical_count"].(float64); ok {
-		diff.NewCriticalCount = int(v)
-	}
-	if v, ok := m["new_high_count"].(float64); ok {
-		diff.NewHighCount = int(v)
-	}
-	if v, ok := m["new_medium_count"].(float64); ok {
-		diff.NewMediumCount = int(v)
-	}
-	if v, ok := m["new_low_count"].(float64); ok {
-		diff.NewLowCount = int(v)
-	}
-	if v, ok := m["suppressed_cves_count"].(float64); ok {
-		diff.SuppressedCVECount = int(v)
-	}
-	if v, ok := m["unchanged_cves_count"].(float64); ok {
-		diff.UnchangedCVECount = int(v)
+	diff := &ScanDiffInfo{
+		Passed:             getBool(m, "passed"),
+		NewCriticalCount:   getIntVal(m, "new_critical_count"),
+		NewHighCount:       getIntVal(m, "new_high_count"),
+		NewMediumCount:     getIntVal(m, "new_medium_count"),
+		NewLowCount:        getIntVal(m, "new_low_count"),
+		SuppressedCVECount: getIntVal(m, "suppressed_cves_count"),
+		UnchangedCVECount:  getIntVal(m, "unchanged_cves_count"),
+		FailureReasons:     getStringSlice(m, "failure_reasons"),
 	}
 
 	if cves, ok := m["new_cves"].([]any); ok {
@@ -153,27 +125,12 @@ func mapScanDiff(m map[string]any) *ScanDiffInfo {
 	if violations, ok := m["sla_violations"].([]any); ok {
 		for _, v := range violations {
 			if vm, ok := v.(map[string]any); ok {
-				sv := SLAViolation{}
-				if s, ok := vm["cve_id"].(string); ok {
-					sv.CVEID = s
-				}
-				if s, ok := vm["severity"].(string); ok {
-					sv.Severity = s
-				}
-				if s, ok := vm["package_name"].(string); ok {
-					sv.PackageName = s
-				}
-				if f, ok := vm["days_overdue"].(float64); ok {
-					sv.DaysOverdue = int(f)
-				}
-				diff.SLAViolations = append(diff.SLAViolations, sv)
-			}
-		}
-	}
-	if reasons, ok := m["failure_reasons"].([]any); ok {
-		for _, r := range reasons {
-			if s, ok := r.(string); ok {
-				diff.FailureReasons = append(diff.FailureReasons, s)
+				diff.SLAViolations = append(diff.SLAViolations, SLAViolation{
+					CVEID:       getStringVal(vm, "cve_id"),
+					Severity:    getStringVal(vm, "severity"),
+					PackageName: getStringVal(vm, "package_name"),
+					DaysOverdue: getIntVal(vm, "days_overdue"),
+				})
 			}
 		}
 	}
@@ -182,31 +139,18 @@ func mapScanDiff(m map[string]any) *ScanDiffInfo {
 }
 
 func mapScanCVE(m map[string]any) ScanCVE {
-	cve := ScanCVE{}
-	if s, ok := m["cve_id"].(string); ok {
-		cve.CVEID = s
-	}
-	if s, ok := m["severity"].(string); ok {
-		cve.Severity = s
-	}
-	if s, ok := m["package_name"].(string); ok {
-		cve.PackageName = s
-	}
-	if s, ok := m["package_version"].(string); ok {
-		cve.PackageVersion = s
-	}
-	if s, ok := m["fix_state"].(string); ok {
-		cve.FixState = s
+	cve := ScanCVE{
+		CVEID:          getStringVal(m, "cve_id"),
+		Severity:       getStringVal(m, "severity"),
+		PackageName:    getStringVal(m, "package_name"),
+		PackageVersion: getStringVal(m, "package_version"),
+		FixState:       getStringVal(m, "fix_state"),
 	}
 	if sup, ok := m["suppression"].(map[string]any); ok {
-		s := &Suppression{}
-		if v, ok := sup["suppression_type"].(string); ok {
-			s.Type = v
+		cve.Suppression = &Suppression{
+			Type:          getStringVal(sup, "suppression_type"),
+			Justification: getStringVal(sup, "justification"),
 		}
-		if v, ok := sup["justification"].(string); ok {
-			s.Justification = v
-		}
-		cve.Suppression = s
 	}
 	return cve
 }
