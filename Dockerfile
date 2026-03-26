@@ -1,5 +1,4 @@
-FROM cgr.dev/chainguard/git:latest-root AS base
-FROM base
+FROM gcr.io/distroless/static-debian12:nonroot
 COPY drape /usr/local/bin/drape
-USER git
+USER nonroot
 ENTRYPOINT ["drape"]
