@@ -1,0 +1,23 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - bodyclose
+    - gosec
+    - gocritic
+    - misspell
+    - unconvert
+    - unparam
+    - prealloc
+  settings:
+    gocritic:
+      enabled-tags:
+        - diagnostic
+  exclusions:
+    paths:
+      - internal/junit/testdata

@@ -1,0 +1,90 @@
+version: 2
+
+project_name: drape
+
+builds:
+  - id: drape
+    main: .
+    binary: drape
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: drape
+    builds:
+      - drape
+    name_template: "drape_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+release:
+  github:
+    owner: drape-io
+    name: drape-cli
+  name_template: "v{{.Version}}"
+  draft: false
+  prerelease: auto
+
+brews:
+  - repository:
+      owner: drape-io
+      name: homebrew-tap
+    homepage: "https://drape.io"
+    description: "CLI for uploading test results and coverage to Drape"
+    license: "MPL-2.0"
+    install: |
+      bin.install "drape"
+    test: |
+      system "#{bin}/drape", "version"
+
+dockers:
+  - image_templates:
+      - "drapeio/drape-cli:{{ .Version }}-amd64"
+      - "drapeio/drape-cli:latest-amd64"
+    use: buildx
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/amd64"
+  - image_templates:
+      - "drapeio/drape-cli:{{ .Version }}-arm64"
+      - "drapeio/drape-cli:latest-arm64"
+    use: buildx
+    dockerfile: Dockerfile
+    goarch: arm64
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
+docker_manifests:
+  - name_template: "drapeio/drape-cli:{{ .Version }}"
+    image_templates:
+      - "drapeio/drape-cli:{{ .Version }}-amd64"
+      - "drapeio/drape-cli:{{ .Version }}-arm64"
+  - name_template: "drapeio/drape-cli:latest"
+    image_templates:
+      - "drapeio/drape-cli:latest-amd64"
+      - "drapeio/drape-cli:latest-arm64"
