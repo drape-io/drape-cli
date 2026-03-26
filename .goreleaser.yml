@@ -55,6 +55,7 @@ brews:
       owner: drape-io
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
     homepage: "https://drape.io"
     description: "CLI for uploading test results and coverage to Drape"
     license: "MPL-2.0"
