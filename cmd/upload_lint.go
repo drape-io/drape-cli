@@ -59,7 +59,7 @@ func runUploadLint(cmd *cobra.Command, args []string) error {
 		metadata["pr_number"] = ctx.prNumber
 	}
 
-	uploadID, err := ctx.uploadFile("lint_report", filename, data, metadata)
+	uploadID, err := ctx.uploadFile("lint_report", filename, data, metadata, nil)
 	if err != nil {
 		return &ExitError{Code: exitcode.UploadError, Err: err}
 	}

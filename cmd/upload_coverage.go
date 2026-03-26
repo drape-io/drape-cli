@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -24,11 +25,15 @@ var (
 )
 
 var uploadCoverageCmd = &cobra.Command{
-	Use:   "coverage <file>",
+	Use:   "coverage <file> [file...]",
 	Short: "Upload coverage report to Drape",
-	Long:  "Upload a coverage report (Cobertura XML, LCOV, or Go coverage) to Drape for analysis.",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runUploadCoverage,
+	Long: `Upload one or more coverage reports (Cobertura XML, LCOV, or Go coverage) to Drape for analysis.
+
+When multiple files are provided, they are uploaded as a batch and merged
+server-side into a single coverage report before the regression check runs.
+Glob patterns are supported (e.g. "coverage/*.xml").`,
+	Args: cobra.MinimumNArgs(1),
+	RunE: runUploadCoverage,
 }
 
 func init() {
@@ -44,14 +49,15 @@ func init() {
 }
 
 func runUploadCoverage(cmd *cobra.Command, args []string) error {
-	filePath := filepath.Clean(args[0])
-	filename := filepath.Base(filePath)
-
-	data, err := os.ReadFile(filePath) //nolint:gosec // G304: path is from CLI args, cleaned above
+	files, err := expandGlobs(args)
 	if err != nil {
-		return &ExitError{Code: exitcode.ParseError, Err: fmt.Errorf("reading file %s: %w", filePath, err)}
+		return &ExitError{Code: exitcode.UsageError, Err: err}
 	}
-	output.Info("Read %s (%d bytes)", filename, len(data))
+	if len(files) == 0 {
+		return &ExitError{Code: exitcode.ParseError, Err: fmt.Errorf("no files matched the given pattern(s)")}
+	}
+
+	output.Info("Found %d coverage file(s) to upload", len(files))
 
 	ctx, err := newUploadContext()
 	if err != nil {
@@ -59,7 +65,7 @@ func runUploadCoverage(cmd *cobra.Command, args []string) error {
 	}
 
 	if flagDryRun {
-		ctx.dryRunSimple([]string{filePath}, flagCovFormat)
+		ctx.dryRunSimple(files, flagCovFormat)
 		return nil
 	}
 
@@ -67,7 +73,15 @@ func runUploadCoverage(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Build metadata
+	metadata := buildCoverageMetadata(ctx)
+
+	if len(files) == 1 {
+		return runSingleCoverageUpload(ctx, files[0], metadata)
+	}
+	return runBatchCoverageUpload(ctx, files, metadata)
+}
+
+func buildCoverageMetadata(ctx *uploadContext) map[string]any {
 	targetBranch := resolveGitContext(flagCovTargetBranch, ctx.ci, func(info *cidetect.CIInfo) string { return info.TargetBranch })
 
 	metadata := map[string]any{
@@ -88,8 +102,20 @@ func runUploadCoverage(cmd *cobra.Command, args []string) error {
 	if len(flagCovGroups) > 0 {
 		metadata["group"] = strings.Join(flagCovGroups, ",")
 	}
+	return metadata
+}
 
-	uploadID, err := ctx.uploadFile("coverage", filename, data, metadata)
+func runSingleCoverageUpload(ctx *uploadContext, filePath string, metadata map[string]any) error {
+	filePath = filepath.Clean(filePath)
+	filename := filepath.Base(filePath)
+
+	data, err := os.ReadFile(filePath) //nolint:gosec // G304: path is from CLI args, cleaned above
+	if err != nil {
+		return &ExitError{Code: exitcode.ParseError, Err: fmt.Errorf("reading file %s: %w", filePath, err)}
+	}
+	output.Info("Read %s (%d bytes)", filename, len(data))
+
+	uploadID, err := ctx.uploadFile("coverage", filename, data, metadata, nil)
 	if err != nil {
 		return &ExitError{Code: exitcode.UploadError, Err: err}
 	}
@@ -118,6 +144,91 @@ func runUploadCoverage(cmd *cobra.Command, args []string) error {
 	result.Uploads[0].Result = status
 	setResult(result)
 
+	printCoverageSummary(status)
+
+	if status.CoverageDiff != nil {
+		return printCoverageDiff(status.CoverageDiff, ctx.prNumber)
+	}
+
+	return nil
+}
+
+func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[string]any) error {
+	// Create the batch
+	batchResp, err := ctx.client.CreateCoverageBatch(ctx.orgSlug, ctx.repoID, api.CoverageBatchRequest{
+		ExpectedCount: len(files),
+		UploadType:    "coverage",
+		Branch:        ctx.branch,
+		SHA:           ctx.sha,
+		Metadata:      metadata,
+	})
+	if err != nil {
+		return &ExitError{Code: exitcode.UploadError, Err: fmt.Errorf("creating batch: %w", err)}
+	}
+	output.Info("Created batch (ID: %d) for %d files", batchResp.BatchID, len(files))
+
+	batchID := batchResp.BatchID
+	result, uploadErrors := ctx.uploadFiles("coverage", files, func(_ string) map[string]any { return metadata }, &batchID)
+	if err := checkAllFailed(uploadErrors, result.Uploads); err != nil {
+		return err
+	}
+
+	output.Info("Uploaded %d/%d file(s)", result.FilesUploaded, len(files))
+
+	if uploadErrors > 0 {
+		// Batch will never reach expected_count — fail early instead of polling a doomed batch.
+		setResult(result)
+		return &ExitError{
+			Code: exitcode.UploadError,
+			Err: fmt.Errorf("%d of %d file(s) failed to upload; batch %d cannot complete",
+				uploadErrors, len(files), batchResp.BatchID),
+		}
+	}
+
+	if !flagUploadWait {
+		setResult(result)
+		return nil
+	}
+
+	// Cap batch timeout at 4 minutes to stay under the server-side 5-minute reaper.
+	batchTimeout := time.Duration(flagUploadTimeout) * time.Second * time.Duration(len(files))
+	const maxBatchTimeout = 4 * time.Minute
+	if batchTimeout > maxBatchTimeout {
+		batchTimeout = maxBatchTimeout
+	}
+	output.Info("Waiting for batch processing (timeout: %ds)...", int(batchTimeout.Seconds()))
+
+	batchStatus, err := ctx.client.PollCoverageBatchStatus(ctx.orgSlug, ctx.repoID, batchResp.BatchID, batchTimeout)
+	if err != nil {
+		if batchStatus != nil && batchStatus.Status == "failed" {
+			return &ExitError{Code: exitcode.UploadError, Err: err}
+		}
+		return &ExitError{Code: exitcode.Timeout, Err: err}
+	}
+
+	// Map batch result to a CoverageStatusResponse for consistent JSON output
+	batchCovStatus := &api.CoverageStatusResponse{
+		Status:         batchStatus.Status,
+		ErrorMessage:   batchStatus.ErrorMessage,
+		CoverageResult: batchStatus.CoverageResult,
+	}
+
+	// Attach the merged result to the first upload entry for JSON output
+	if len(result.Uploads) > 0 {
+		result.Uploads[0].Result = batchCovStatus
+	}
+	setResult(result)
+
+	printCoverageSummary(batchCovStatus)
+
+	if batchCovStatus.CoverageDiff != nil {
+		return printCoverageDiff(batchCovStatus.CoverageDiff, ctx.prNumber)
+	}
+
+	return nil
+}
+
+func printCoverageSummary(status *api.CoverageStatusResponse) {
 	output.Info("")
 	output.Info("Coverage Summary")
 	if status.CoverageRate != nil {
@@ -126,12 +237,6 @@ func runUploadCoverage(cmd *cobra.Command, args []string) error {
 	if status.FileCount != nil {
 		output.Info("  Files:         %d", *status.FileCount)
 	}
-
-	if status.CoverageDiff != nil {
-		return printCoverageDiff(status.CoverageDiff, ctx.prNumber)
-	}
-
-	return nil
 }
 
 func printCoverageDiff(diff *api.CoverageDiffInfo, prNumber int) error {
