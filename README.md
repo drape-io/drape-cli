@@ -26,7 +26,7 @@ chmod +x drape
 sudo mv drape /usr/local/bin/
 ```
 
-Note: release archives are named `drape_{version}_{os}_{arch}.tar.gz`. The `/latest/download/` URLs above redirect to the most recent release. For a specific version, use e.g. `drape_1.0.0_linux_amd64.tar.gz`.
+Release archives are named `drape_{os}_{arch}.tar.gz`, so the `/latest/download/` URLs above always point to the most recent release.
 
 ### Docker
 
