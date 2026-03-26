@@ -31,8 +31,8 @@ Note: release archives are named `drape_{version}_{os}_{arch}.tar.gz`. The `/lat
 ### Docker
 
 ```bash
-docker run --rm drapeio/drape-cli version
-docker run --rm -v $(pwd):/work -w /work drapeio/drape-cli upload tests "**/*.xml"
+docker run --rm ghcr.io/drape-io/drape-cli version
+docker run --rm -v $(pwd):/work -w /work ghcr.io/drape-io/drape-cli upload tests "**/*.xml"
 ```
 
 ### Nix

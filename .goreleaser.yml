@@ -64,15 +64,15 @@ brews:
 
 dockers:
   - image_templates:
-      - "drapeio/drape-cli:{{ .Version }}-amd64"
-      - "drapeio/drape-cli:latest-amd64"
+      - "ghcr.io/drape-io/drape-cli:{{ .Version }}-amd64"
+      - "ghcr.io/drape-io/drape-cli:latest-amd64"
     use: buildx
     dockerfile: Dockerfile
     build_flag_templates:
       - "--platform=linux/amd64"
   - image_templates:
-      - "drapeio/drape-cli:{{ .Version }}-arm64"
-      - "drapeio/drape-cli:latest-arm64"
+      - "ghcr.io/drape-io/drape-cli:{{ .Version }}-arm64"
+      - "ghcr.io/drape-io/drape-cli:latest-arm64"
     use: buildx
     dockerfile: Dockerfile
     goarch: arm64
@@ -80,11 +80,11 @@ dockers:
       - "--platform=linux/arm64"
 
 docker_manifests:
-  - name_template: "drapeio/drape-cli:{{ .Version }}"
+  - name_template: "ghcr.io/drape-io/drape-cli:{{ .Version }}"
     image_templates:
-      - "drapeio/drape-cli:{{ .Version }}-amd64"
-      - "drapeio/drape-cli:{{ .Version }}-arm64"
-  - name_template: "drapeio/drape-cli:latest"
+      - "ghcr.io/drape-io/drape-cli:{{ .Version }}-amd64"
+      - "ghcr.io/drape-io/drape-cli:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/drape-io/drape-cli:latest"
     image_templates:
-      - "drapeio/drape-cli:latest-amd64"
-      - "drapeio/drape-cli:latest-arm64"
+      - "ghcr.io/drape-io/drape-cli:latest-amd64"
+      - "ghcr.io/drape-io/drape-cli:latest-arm64"
