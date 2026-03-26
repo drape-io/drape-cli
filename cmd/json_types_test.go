@@ -18,10 +18,12 @@ func TestUploadResultSingleFile(t *testing.T) {
 				Filename: "coverage.xml",
 				UploadID: 123,
 				Result: &api.CoverageStatusResponse{
-					UploadID:     123,
-					Status:       "completed",
-					CoverageRate: &rate,
-					FileCount:    &count,
+					UploadID: 123,
+					Status:   "completed",
+					CoverageResult: api.CoverageResult{
+						CoverageRate: &rate,
+						FileCount:    &count,
+					},
 				},
 			},
 		},
@@ -294,17 +296,19 @@ func TestUploadResultWithCoverageDiff(t *testing.T) {
 				Filename: "cov.xml",
 				UploadID: 100,
 				Result: &api.CoverageStatusResponse{
-					UploadID:     100,
-					Status:       "completed",
-					CoverageRate: &rate,
-					CoverageDiff: &api.CoverageDiffInfo{
-						Passed:           true,
-						BaseCoverageRate: &baseRate,
-						HeadCoverageRate: "90.0",
-						CoverageDelta:    &delta,
-						NewLinesTotal:    50,
-						NewLinesCovered:  45,
-						FailureReasons:   []string{},
+					UploadID: 100,
+					Status:   "completed",
+					CoverageResult: api.CoverageResult{
+						CoverageRate: &rate,
+						CoverageDiff: &api.CoverageDiffInfo{
+							Passed:           true,
+							BaseCoverageRate: &baseRate,
+							HeadCoverageRate: "90.0",
+							CoverageDelta:    &delta,
+							NewLinesTotal:    50,
+							NewLinesCovered:  45,
+							FailureReasons:   []string{},
+						},
 					},
 				},
 			},
@@ -332,6 +336,70 @@ func TestUploadResultWithCoverageDiff(t *testing.T) {
 	}
 	if diff["new_lines_total"].(float64) != 50 {
 		t.Errorf("new_lines_total = %v, want 50", diff["new_lines_total"])
+	}
+}
+
+func TestUploadResultBatchCoverage(t *testing.T) {
+	// Batch coverage attaches merged result to first upload entry.
+	rate := "91.20"
+	count := 25
+	result := UploadResult{
+		FilesMatched:  3,
+		FilesUploaded: 3,
+		Uploads: []UploadEntry{
+			{
+				Filename: "unit.xml",
+				UploadID: 10,
+				Result: &api.CoverageStatusResponse{
+					Status: "completed",
+					CoverageResult: api.CoverageResult{
+						CoverageRate: &rate,
+						FileCount:    &count,
+					},
+				},
+			},
+			{Filename: "integration.xml", UploadID: 11},
+			{Filename: "e2e.xml", UploadID: 12},
+		},
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if parsed["files_matched"].(float64) != 3 {
+		t.Errorf("files_matched = %v, want 3", parsed["files_matched"])
+	}
+
+	uploads := parsed["uploads"].([]any)
+	if len(uploads) != 3 {
+		t.Fatalf("uploads length = %d, want 3", len(uploads))
+	}
+
+	// First entry has the merged result
+	first := uploads[0].(map[string]any)
+	resultMap := first["result"].(map[string]any)
+	if resultMap["coverage_rate"] != "91.20" {
+		t.Errorf("result.coverage_rate = %v, want 91.20", resultMap["coverage_rate"])
+	}
+	if resultMap["file_count"].(float64) != 25 {
+		t.Errorf("result.file_count = %v, want 25", resultMap["file_count"])
+	}
+
+	// Other entries have no result
+	second := uploads[1].(map[string]any)
+	if _, ok := second["result"]; ok {
+		t.Error("uploads[1].result should be omitted")
+	}
+	third := uploads[2].(map[string]any)
+	if _, ok := third["result"]; ok {
+		t.Error("uploads[2].result should be omitted")
 	}
 }
 

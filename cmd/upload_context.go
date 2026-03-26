@@ -105,19 +105,15 @@ func (ctx *uploadContext) resolveClient() error {
 // uploadFile performs the 3-step upload: initiate → presigned PUT → complete.
 // Pass batchID to associate the upload with a batch, or nil for standalone uploads.
 // Returns the upload ID on success.
-func (ctx *uploadContext) uploadFile(uploadType, filename string, data []byte, metadata map[string]any, batchID ...*int) (int, error) {
-	req := api.UploadInitiateRequest{
+func (ctx *uploadContext) uploadFile(uploadType, filename string, data []byte, metadata map[string]any, batchID *int) (int, error) {
+	initResp, err := ctx.client.InitiateUpload(ctx.orgSlug, ctx.repoID, api.UploadInitiateRequest{
 		UploadType: uploadType,
 		Branch:     ctx.branch,
 		SHA:        ctx.sha,
 		Filename:   filename,
 		Metadata:   metadata,
-	}
-	if len(batchID) > 0 && batchID[0] != nil {
-		req.BatchID = batchID[0]
-	}
-
-	initResp, err := ctx.client.InitiateUpload(ctx.orgSlug, ctx.repoID, req)
+		BatchID:    batchID,
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -148,7 +144,8 @@ func (ctx *uploadContext) drapeURL(uploadID int) string {
 
 // uploadFiles reads, uploads, and returns results for each file.
 // metadataFn is called per file to allow per-file metadata (e.g. scan) or static metadata.
-func (ctx *uploadContext) uploadFiles(uploadType string, files []string, metadataFn func(string) map[string]any) (UploadResult, int) {
+// Pass batchID to associate all uploads with a batch, or nil for standalone uploads.
+func (ctx *uploadContext) uploadFiles(uploadType string, files []string, metadataFn func(string) map[string]any, batchID *int) (UploadResult, int) {
 	result := UploadResult{FilesMatched: len(files)}
 	var uploadErrors int
 
@@ -164,7 +161,7 @@ func (ctx *uploadContext) uploadFiles(uploadType string, files []string, metadat
 		output.Verbose("Uploading %s (%d bytes)...", filename, len(data))
 
 		metadata := metadataFn(filename)
-		uploadID, err := ctx.uploadFile(uploadType, filename, data, metadata)
+		uploadID, err := ctx.uploadFile(uploadType, filename, data, metadata, batchID)
 		if err != nil {
 			output.Error("Failed to upload %s: %v", filename, err)
 			uploadErrors++

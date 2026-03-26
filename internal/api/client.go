@@ -2,6 +2,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,14 @@ import (
 
 	"github.com/drape-io/drape-cli/internal/output"
 )
+
+// seekableReadCloser wraps a bytes.Reader so it satisfies io.ReadCloser and io.Seeker,
+// allowing doWithRetries to reset the body on retry.
+type seekableReadCloser struct {
+	*bytes.Reader
+}
+
+func (s *seekableReadCloser) Close() error { return nil }
 
 // Client communicates with the Drape API.
 type Client struct {
@@ -126,6 +135,72 @@ type ErrorResponse struct {
 	Error   string `json:"error"`
 	Message string `json:"message"`
 	Detail  string `json:"detail"`
+}
+
+// postJSON sends a POST request with a JSON body and decodes the response.
+// If reqBody is nil, no body is sent. If result is nil, the response body is discarded.
+func (c *Client) postJSON(url string, reqBody any, result any) error {
+	var body io.Reader
+	if reqBody != nil {
+		encoded, err := json.Marshal(reqBody)
+		if err != nil {
+			return fmt.Errorf("marshaling request: %w", err)
+		}
+		sr := &seekableReadCloser{bytes.NewReader(encoded)}
+		body = sr
+	}
+
+	httpReq, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return fmt.Errorf("creating request: %w", err)
+	}
+	// Preserve seekable body for retry support.
+	if body != nil {
+		httpReq.Body = body.(io.ReadCloser)
+		httpReq.Header.Set("Content-Type", "application/json")
+	}
+	c.setHeaders(httpReq)
+
+	resp, err := c.doWithRetries(httpReq)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return parseErrorResponse(resp)
+	}
+
+	if result != nil {
+		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+			return fmt.Errorf("decoding response: %w", err)
+		}
+	}
+	return nil
+}
+
+// getJSON sends a GET request and decodes the JSON response.
+func (c *Client) getJSON(url string, result any) error {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("creating request: %w", err)
+	}
+	c.setHeaders(req)
+
+	resp, err := c.doWithRetries(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return parseErrorResponse(resp)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+		return fmt.Errorf("decoding response: %w", err)
+	}
+	return nil
 }
 
 func parseErrorResponse(resp *http.Response) error {

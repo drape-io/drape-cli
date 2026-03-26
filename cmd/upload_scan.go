@@ -111,7 +111,7 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 			metadata["pr_number"] = ctx.prNumber
 		}
 		return metadata
-	})
+	}, nil)
 	if err := checkAllFailed(uploadErrors, result.Uploads); err != nil {
 		return err
 	}

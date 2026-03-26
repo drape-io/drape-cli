@@ -115,7 +115,7 @@ func runSingleCoverageUpload(ctx *uploadContext, filePath string, metadata map[s
 	}
 	output.Info("Read %s (%d bytes)", filename, len(data))
 
-	uploadID, err := ctx.uploadFile("coverage", filename, data, metadata)
+	uploadID, err := ctx.uploadFile("coverage", filename, data, metadata, nil)
 	if err != nil {
 		return &ExitError{Code: exitcode.UploadError, Err: err}
 	}
@@ -167,34 +167,8 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 	}
 	output.Info("Created batch (ID: %d) for %d files", batchResp.BatchID, len(files))
 
-	// Upload each file with the batch ID
-	result := UploadResult{FilesMatched: len(files)}
-	var uploadErrors int
-
-	for _, f := range files {
-		data, err := os.ReadFile(filepath.Clean(f)) //nolint:gosec // G304: path is from CLI args + glob expansion
-		if err != nil {
-			output.Error("Failed to read %s: %v", f, err)
-			uploadErrors++
-			continue
-		}
-
-		filename := filepath.Base(f)
-		output.Verbose("Uploading %s (%d bytes)...", filename, len(data))
-
-		batchID := batchResp.BatchID
-		uploadID, err := ctx.uploadFile("coverage", filename, data, metadata, &batchID)
-		if err != nil {
-			output.Error("Failed to upload %s: %v", filename, err)
-			uploadErrors++
-			continue
-		}
-
-		output.Verbose("  %s: upload initiated (ID: %d)", filename, uploadID)
-		result.Uploads = append(result.Uploads, UploadEntry{Filename: filename, UploadID: uploadID, DrapeURL: ctx.drapeURL(uploadID)})
-	}
-
-	result.FilesUploaded = len(result.Uploads)
+	batchID := batchResp.BatchID
+	result, uploadErrors := ctx.uploadFiles("coverage", files, func(_ string) map[string]any { return metadata }, &batchID)
 	if err := checkAllFailed(uploadErrors, result.Uploads); err != nil {
 		return err
 	}
@@ -225,12 +199,9 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 
 	// Map batch result to a CoverageStatusResponse for consistent JSON output
 	batchCovStatus := &api.CoverageStatusResponse{
-		Status:             batchStatus.Status,
-		CoverageSnapshotID: batchStatus.CoverageSnapshotID,
-		CoverageRate:       batchStatus.CoverageRate,
-		FileCount:          batchStatus.FileCount,
-		ErrorMessage:       batchStatus.ErrorMessage,
-		CoverageDiff:       batchStatus.CoverageDiff,
+		Status:         batchStatus.Status,
+		ErrorMessage:   batchStatus.ErrorMessage,
+		CoverageResult: batchStatus.CoverageResult,
 	}
 
 	// Attach the merged result to the first upload entry for JSON output

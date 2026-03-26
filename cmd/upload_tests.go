@@ -91,7 +91,7 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 	}
 
 	// Upload each file
-	result, uploadErrors := ctx.uploadFiles("test_results", files, func(_ string) map[string]any { return metadata })
+	result, uploadErrors := ctx.uploadFiles("test_results", files, func(_ string) map[string]any { return metadata }, nil)
 	if err := checkAllFailed(uploadErrors, result.Uploads); err != nil {
 		return err
 	}
