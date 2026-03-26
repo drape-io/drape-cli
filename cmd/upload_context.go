@@ -103,43 +103,21 @@ func (ctx *uploadContext) resolveClient() error {
 }
 
 // uploadFile performs the 3-step upload: initiate → presigned PUT → complete.
+// Pass batchID to associate the upload with a batch, or nil for standalone uploads.
 // Returns the upload ID on success.
-func (ctx *uploadContext) uploadFile(uploadType, filename string, data []byte, metadata map[string]any) (int, error) {
-	initResp, err := ctx.client.InitiateUpload(ctx.orgSlug, ctx.repoID, api.UploadInitiateRequest{
+func (ctx *uploadContext) uploadFile(uploadType, filename string, data []byte, metadata map[string]any, batchID ...*int) (int, error) {
+	req := api.UploadInitiateRequest{
 		UploadType: uploadType,
 		Branch:     ctx.branch,
 		SHA:        ctx.sha,
 		Filename:   filename,
 		Metadata:   metadata,
-	})
-	if err != nil {
-		return 0, err
 	}
-	output.Verbose("Upload ID: %d, uploading to presigned URL...", initResp.UploadID)
-
-	if err := ctx.client.UploadToPresignedURL(initResp.UploadURL, data); err != nil {
-		return 0, err
-	}
-	output.Verbose("File uploaded to object storage")
-
-	if err := ctx.client.CompleteUpload(ctx.orgSlug, ctx.repoID, initResp.UploadID); err != nil {
-		return 0, err
+	if len(batchID) > 0 && batchID[0] != nil {
+		req.BatchID = batchID[0]
 	}
 
-	return initResp.UploadID, nil
-}
-
-// uploadFileWithBatch performs the 3-step upload with a batch ID: initiate → presigned PUT → complete.
-// Returns the upload ID on success.
-func (ctx *uploadContext) uploadFileWithBatch(uploadType, filename string, data []byte, metadata map[string]any, batchID int) (int, error) {
-	initResp, err := ctx.client.InitiateUpload(ctx.orgSlug, ctx.repoID, api.UploadInitiateRequest{
-		UploadType: uploadType,
-		Branch:     ctx.branch,
-		SHA:        ctx.sha,
-		Filename:   filename,
-		Metadata:   metadata,
-		BatchID:    &batchID,
-	})
+	initResp, err := ctx.client.InitiateUpload(ctx.orgSlug, ctx.repoID, req)
 	if err != nil {
 		return 0, err
 	}

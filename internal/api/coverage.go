@@ -194,18 +194,21 @@ func (c *Client) PollCoverageBatchStatus(orgSlug string, repoID, batchID int, ti
 
 func mapBatchStatus(m map[string]any) *CoverageBatchStatusResponse {
 	status := &CoverageBatchStatusResponse{
-		BatchID:            getIntVal(m, "batch_id"),
-		Status:             getStringVal(m, "status"),
-		ExpectedCount:      getIntVal(m, "expected_count"),
-		CompletedCount:     getIntVal(m, "completed_count"),
-		ErrorMessage:       getString(m, "error_message"),
-		CoverageRate:       getString(m, "coverage_rate"),
-		FileCount:          getInt(m, "file_count"),
-		CoverageSnapshotID: getInt(m, "coverage_snapshot_id"),
+		BatchID:        getIntVal(m, "batch_id"),
+		Status:         getStringVal(m, "status"),
+		ExpectedCount:  getIntVal(m, "expected_count"),
+		CompletedCount: getIntVal(m, "completed_count"),
+		ErrorMessage:   getString(m, "error_message"),
 	}
 
-	if diffMap, ok := m["coverage_diff"].(map[string]any); ok {
-		status.CoverageDiff = mapCoverageDiff(diffMap)
+	// Coverage fields are nested under "result", matching the individual upload shape.
+	if result, ok := m["result"].(map[string]any); ok {
+		status.CoverageSnapshotID = getInt(result, "snapshot_id")
+		status.CoverageRate = getString(result, "coverage_rate")
+		status.FileCount = getInt(result, "file_count")
+		if diffMap, ok := result["coverage_diff"].(map[string]any); ok {
+			status.CoverageDiff = mapCoverageDiff(diffMap)
+		}
 	}
 
 	return status

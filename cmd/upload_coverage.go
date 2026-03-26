@@ -182,7 +182,8 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 		filename := filepath.Base(f)
 		output.Verbose("Uploading %s (%d bytes)...", filename, len(data))
 
-		uploadID, err := ctx.uploadFileWithBatch("coverage", filename, data, metadata, batchResp.BatchID)
+		batchID := batchResp.BatchID
+		uploadID, err := ctx.uploadFile("coverage", filename, data, metadata, &batchID)
 		if err != nil {
 			output.Error("Failed to upload %s: %v", filename, err)
 			uploadErrors++
@@ -199,6 +200,11 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 	}
 
 	output.Info("Uploaded %d/%d file(s)", result.FilesUploaded, len(files))
+
+	if uploadErrors > 0 {
+		output.Error("Warning: %d file(s) failed to upload; batch expects %d but only %d were sent. "+
+			"The batch will timeout server-side after 5 minutes.", uploadErrors, len(files), result.FilesUploaded)
+	}
 
 	if !flagUploadWait {
 		setResult(result)
