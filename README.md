@@ -50,18 +50,20 @@ nix profile install github:drape-io/drape-cli
   with:
     type: tests
     paths: "results.xml"
-    token: ${{ secrets.DRAPE_TOKEN }}
+    api-key: ${{ secrets.DRAPE_API_KEY }}
     org: my-org
     wait: true
 ```
 
 ## Authentication
 
-Set `DRAPE_TOKEN` as an environment variable or pass `--token`:
+Set `DRAPE_API_KEY` as an environment variable or pass `--api-key`:
 
 ```bash
-export DRAPE_TOKEN=drape_tok_xxxx
+export DRAPE_API_KEY=drape_tok_xxxx
 ```
+
+> **Note:** `DRAPE_TOKEN` and `--token` are still accepted for backwards compatibility.
 
 ## Commands
 
@@ -138,7 +140,7 @@ Print CLI version information.
 |------|---------|-------------|
 | `--org` | `DRAPE_ORG` | Organization slug |
 | `--repo` | `DRAPE_REPO` | Repository name (auto-detected from CI) |
-| `--token` | `DRAPE_TOKEN` | API token |
+| `--api-key` | `DRAPE_API_KEY` | API key |
 | `--api-url` | `DRAPE_API_URL` | API base URL (default: `https://api.drape.io`) |
 | `--verbose` | | Enable verbose logging |
 | `--dry-run` | | Parse and validate locally, don't upload |
@@ -191,13 +193,13 @@ jobs:
       - name: Upload test results
         run: drape upload tests results.xml --wait
         env:
-          DRAPE_TOKEN: ${{ secrets.DRAPE_TOKEN }}
+          DRAPE_API_KEY: ${{ secrets.DRAPE_API_KEY }}
           DRAPE_ORG: my-org
 
       - name: Upload coverage
         run: drape upload coverage coverage.xml --format cobertura
         env:
-          DRAPE_TOKEN: ${{ secrets.DRAPE_TOKEN }}
+          DRAPE_API_KEY: ${{ secrets.DRAPE_API_KEY }}
           DRAPE_ORG: my-org
 ```
 
@@ -211,7 +213,7 @@ test:
     - drape upload tests results.xml --wait
     - drape upload coverage coverage.xml --format cobertura
   variables:
-    DRAPE_TOKEN: $DRAPE_TOKEN
+    DRAPE_API_KEY: $DRAPE_API_KEY
     DRAPE_ORG: my-org
 ```
 

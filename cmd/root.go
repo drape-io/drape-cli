@@ -17,7 +17,7 @@ import (
 var (
 	flagOrg     string
 	flagRepo    string
-	flagToken   string
+	flagAPIKey  string
 	flagAPIURL  string
 	flagVerbose bool
 	flagDryRun  bool
@@ -57,7 +57,7 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.PersistentFlags().StringVar(&flagOrg, "org", "", "Organization slug (env: DRAPE_ORG)")
 	rootCmd.PersistentFlags().StringVar(&flagRepo, "repo", "", "Repository name (env: DRAPE_REPO)")
-	rootCmd.PersistentFlags().StringVar(&flagToken, "token", "", "API token (env: DRAPE_TOKEN)")
+	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "API key (env: DRAPE_API_KEY)")
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "API base URL (env: DRAPE_API_URL, default: https://app.drape.io)")
 	rootCmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "Verbose logging")
 	rootCmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "Parse and validate locally, don't upload")
@@ -125,9 +125,13 @@ func (e *ExitError) Error() string {
 
 // newClient creates an API client from global flags, resolving env var defaults.
 func newClient() (*api.Client, error) {
-	token := resolveFlag(flagToken, "DRAPE_TOKEN")
-	if token == "" {
-		return nil, &ExitError{Code: exitcode.UsageError, Err: errMissing("--token or DRAPE_TOKEN")}
+	apiKey := resolveFlag(flagAPIKey, "DRAPE_API_KEY")
+	if apiKey == "" {
+		// Fall back to legacy DRAPE_TOKEN for backwards compatibility
+		apiKey = resolveFlag("", "DRAPE_TOKEN")
+	}
+	if apiKey == "" {
+		return nil, &ExitError{Code: exitcode.UsageError, Err: errMissing("--api-key or DRAPE_API_KEY")}
 	}
 
 	apiURL := resolveFlag(flagAPIURL, "DRAPE_API_URL")
@@ -135,7 +139,7 @@ func newClient() (*api.Client, error) {
 		apiURL = "https://app.drape.io"
 	}
 
-	client, err := api.NewClient(apiURL, token)
+	client, err := api.NewClient(apiURL, apiKey)
 	if err != nil {
 		return nil, &ExitError{Code: exitcode.UsageError, Err: err}
 	}
