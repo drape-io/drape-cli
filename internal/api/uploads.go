@@ -19,6 +19,7 @@ type UploadInitiateRequest struct {
 	Filename    string         `json:"filename,omitempty"`
 	ContentType string         `json:"content_type,omitempty"`
 	Metadata    map[string]any `json:"metadata,omitempty"`
+	BatchID     *int           `json:"batch_id,omitempty"`
 }
 
 // UploadInitiateResponse is the unified upload API initiate response.

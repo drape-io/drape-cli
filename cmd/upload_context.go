@@ -129,6 +129,34 @@ func (ctx *uploadContext) uploadFile(uploadType, filename string, data []byte, m
 	return initResp.UploadID, nil
 }
 
+// uploadFileWithBatch performs the 3-step upload with a batch ID: initiate → presigned PUT → complete.
+// Returns the upload ID on success.
+func (ctx *uploadContext) uploadFileWithBatch(uploadType, filename string, data []byte, metadata map[string]any, batchID int) (int, error) {
+	initResp, err := ctx.client.InitiateUpload(ctx.orgSlug, ctx.repoID, api.UploadInitiateRequest{
+		UploadType: uploadType,
+		Branch:     ctx.branch,
+		SHA:        ctx.sha,
+		Filename:   filename,
+		Metadata:   metadata,
+		BatchID:    &batchID,
+	})
+	if err != nil {
+		return 0, err
+	}
+	output.Verbose("Upload ID: %d, uploading to presigned URL...", initResp.UploadID)
+
+	if err := ctx.client.UploadToPresignedURL(initResp.UploadURL, data); err != nil {
+		return 0, err
+	}
+	output.Verbose("File uploaded to object storage")
+
+	if err := ctx.client.CompleteUpload(ctx.orgSlug, ctx.repoID, initResp.UploadID); err != nil {
+		return 0, err
+	}
+
+	return initResp.UploadID, nil
+}
+
 // pollTimeout returns the configured wait timeout as a time.Duration.
 func (ctx *uploadContext) pollTimeout() time.Duration {
 	return time.Duration(flagUploadTimeout) * time.Second
