@@ -176,8 +176,13 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 	output.Info("Uploaded %d/%d file(s)", result.FilesUploaded, len(files))
 
 	if uploadErrors > 0 {
-		output.Error("Warning: %d file(s) failed to upload; batch expects %d but only %d were sent. "+
-			"The batch will timeout server-side after 5 minutes.", uploadErrors, len(files), result.FilesUploaded)
+		// Batch will never reach expected_count — fail early instead of polling a doomed batch.
+		setResult(result)
+		return &ExitError{
+			Code: exitcode.UploadError,
+			Err: fmt.Errorf("%d of %d file(s) failed to upload; batch %d cannot complete",
+				uploadErrors, len(files), batchResp.BatchID),
+		}
 	}
 
 	if !flagUploadWait {
@@ -185,8 +190,12 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 		return nil
 	}
 
-	// Poll batch status with scaled timeout: 120s per file
+	// Cap batch timeout at 4 minutes to stay under the server-side 5-minute reaper.
 	batchTimeout := time.Duration(flagUploadTimeout) * time.Second * time.Duration(len(files))
+	const maxBatchTimeout = 4 * time.Minute
+	if batchTimeout > maxBatchTimeout {
+		batchTimeout = maxBatchTimeout
+	}
 	output.Info("Waiting for batch processing (timeout: %ds)...", int(batchTimeout.Seconds()))
 
 	batchStatus, err := ctx.client.PollCoverageBatchStatus(ctx.orgSlug, ctx.repoID, batchResp.BatchID, batchTimeout)

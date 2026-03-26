@@ -154,8 +154,12 @@ func (c *Client) postJSON(url string, reqBody any, result any) error {
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
-	// Preserve seekable body for retry support and set content length explicitly
-	// (http.NewRequest only auto-detects length for *bytes.Reader, not wrappers).
+	// We wrap the body in seekableReadCloser so doWithRetries can Seek(0) on
+	// retry. http.NewRequest only auto-detects ContentLength for *bytes.Reader
+	// and *bytes.Buffer; our wrapper hides that type, so we must set both
+	// Body and ContentLength explicitly. Without ContentLength the server may
+	// reject the request (e.g. Django returns 422 "Field required" for a
+	// chunked-encoded JSON body).
 	if sr, ok := body.(*seekableReadCloser); ok {
 		httpReq.Body = sr
 		httpReq.ContentLength = int64(sr.Len())
