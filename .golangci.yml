@@ -1,0 +1,43 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - bodyclose
+    - gosec
+    - gocritic
+    - misspell
+    - unconvert
+    - unparam
+    - prealloc
+  settings:
+    gosec:
+      excludes:
+        # File reads from user-provided CLI args are intentional
+        - G304
+        # exec.Command("git", ...) with variable args is intentional
+        - G204
+        # HTTP requests with user-provided URLs are intentional (API client)
+        - G704
+        # Unhandled errors - errcheck linter covers this better
+        - G104
+    gocritic:
+      enabled-tags:
+        - diagnostic
+    errcheck:
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (io.Closer).Close
+  exclusions:
+    paths:
+      - internal/junit/testdata
+    rules:
+      # Test files can ignore unchecked errors
+      - path: _test\.go
+        linters:
+          - errcheck

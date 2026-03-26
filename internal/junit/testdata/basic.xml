@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="com.example.TestMath" tests="4" failures="1" errors="0" skipped="1" time="0.123">
+    <testcase name="test_add" classname="com.example.TestMath" time="0.010"/>
+    <testcase name="test_subtract" classname="com.example.TestMath" time="0.005"/>
+    <testcase name="test_divide" classname="com.example.TestMath" time="0.050">
+      <failure message="expected 2 but got 3" type="AssertionError">Traceback line 1
+Traceback line 2</failure>
+    </testcase>
+    <testcase name="test_multiply" classname="com.example.TestMath" time="0.001">
+      <skipped message="not implemented yet"/>
+    </testcase>
+  </testsuite>
+</testsuites>

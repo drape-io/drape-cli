@@ -1,0 +1,4 @@
+rules:
+  # Secrets are repo-level, not scoped to a GitHub Environment.
+  secrets-outside-env:
+    disable: true
