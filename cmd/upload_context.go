@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/drape-io/drape-cli/internal/api"
@@ -21,9 +22,10 @@ type uploadContext struct {
 	prNumber int
 
 	// Available after resolveClient(). Not set during dry-run.
-	client  *api.Client
-	orgSlug string
-	repoID  int
+	client   *api.Client
+	orgSlug  string
+	repoID   int
+	repoName string
 }
 
 // newUploadContext detects CI, resolves branch/sha, and validates required fields.
@@ -68,7 +70,16 @@ func newUploadContext() (*uploadContext, error) {
 // resolveClient sets up the API client, org, and repo. Must be called before
 // uploadFile or any network operations. Skipped during dry-run.
 func (ctx *uploadContext) resolveClient() error {
-	orgSlug, err := resolveOrg()
+	// Extract org/repo from CI-detected RepoSlug as fallback values.
+	var ciOrg, ciRepo string
+	if ctx.ci != nil && ctx.ci.RepoSlug != "" {
+		if parts := strings.SplitN(ctx.ci.RepoSlug, "/", 2); len(parts) == 2 {
+			ciOrg = parts[0]
+			ciRepo = parts[1]
+		}
+	}
+
+	orgSlug, err := resolveOrg(ciOrg)
 	if err != nil {
 		return err
 	}
@@ -78,7 +89,7 @@ func (ctx *uploadContext) resolveClient() error {
 		return err
 	}
 
-	repoID, err := resolveRepoID(client, orgSlug)
+	repoID, repoName, err := resolveRepoID(client, orgSlug, ciRepo)
 	if err != nil {
 		return err
 	}
@@ -86,6 +97,7 @@ func (ctx *uploadContext) resolveClient() error {
 	ctx.client = client
 	ctx.orgSlug = orgSlug
 	ctx.repoID = repoID
+	ctx.repoName = repoName
 	return nil
 }
 
@@ -124,8 +136,7 @@ func (ctx *uploadContext) pollTimeout() time.Duration {
 // drapeURL constructs a dashboard URL for the given upload ID.
 func (ctx *uploadContext) drapeURL(uploadID int) string {
 	baseURL := ctx.client.BaseURL
-	repoName := resolveFlag(flagRepo, "DRAPE_REPO")
-	return fmt.Sprintf("%s/orgs/%s/repos/%s/uploads/%d", baseURL, ctx.orgSlug, repoName, uploadID)
+	return fmt.Sprintf("%s/orgs/%s/repos/%s/uploads/%d", baseURL, ctx.orgSlug, ctx.repoName, uploadID)
 }
 
 // resolveGitContext returns the flag value if set, otherwise the CI-detected value.

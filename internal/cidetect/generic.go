@@ -15,11 +15,16 @@ func DetectFromGit() *CIInfo {
 		return nil
 	}
 
+	// Parse repo slug from the git remote origin URL.
+	remoteURL := gitCommand("remote", "get-url", "origin")
+	repoSlug := parseGitURL(remoteURL)
+
 	return &CIInfo{
 		Provider:     "local",
 		ProviderName: "Local",
 		CommitSHA:    sha,
 		Branch:       branch,
+		RepoSlug:     repoSlug,
 	}
 }
 
