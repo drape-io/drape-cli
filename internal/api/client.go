@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/drape-io/drape-cli/internal/output"
@@ -19,8 +20,15 @@ type Client struct {
 	UserAgent  string
 }
 
-// NewClient creates a new API client.
-func NewClient(baseURL, token string) *Client {
+// NewClient creates a new API client. Returns an error if baseURL is not a valid URL.
+func NewClient(baseURL, token string) (*Client, error) {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL %q: %w", baseURL, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("invalid base URL scheme %q: must be http or https", u.Scheme)
+	}
 	return &Client{
 		BaseURL: baseURL,
 		Token:   token,
@@ -28,7 +36,7 @@ func NewClient(baseURL, token string) *Client {
 			Timeout: 30 * time.Second,
 		},
 		UserAgent: "drape-cli/dev",
-	}
+	}, nil
 }
 
 // RepoInfo is returned by the repo lookup endpoint.
@@ -50,7 +58,7 @@ func (c *Client) LookupRepo(orgSlug, repoName string) (*RepoInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("looking up repo: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("repository %q not found in org %q", repoName, orgSlug)
@@ -75,15 +83,17 @@ func (c *Client) setHeaders(req *http.Request) {
 }
 
 func (c *Client) doWithRetries(req *http.Request) (*http.Response, error) {
+	const maxRetries = 3
 	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := range maxRetries {
 		if attempt > 0 {
-			delay := time.Duration(1<<uint(attempt-1)) * time.Second
-			output.Verbose("Retrying request after %v (attempt %d/3)", delay, attempt+1)
+			// Exponential backoff: 1s, 2s for retries 1 and 2
+			delay := time.Second << (attempt - 1)
+			output.Verbose("Retrying request after %v (attempt %d/%d)", delay, attempt+1, maxRetries)
 			time.Sleep(delay)
 		}
 
-		resp, err := c.HTTPClient.Do(req)
+		resp, err := c.HTTPClient.Do(req) //nolint:gosec // G704: BaseURL is validated in NewClient
 		if err != nil {
 			lastErr = err
 			continue
@@ -92,14 +102,14 @@ func (c *Client) doWithRetries(req *http.Request) (*http.Response, error) {
 		// Only retry on 5xx errors
 		if resp.StatusCode >= 500 {
 			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			lastErr = fmt.Errorf("server error %d: %s", resp.StatusCode, string(body))
 			continue
 		}
 
 		return resp, nil
 	}
-	return nil, fmt.Errorf("request failed after 3 attempts: %w", lastErr)
+	return nil, fmt.Errorf("request failed after %d attempts: %w", maxRetries, lastErr)
 }
 
 // ErrorResponse represents an API error.

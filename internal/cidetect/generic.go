@@ -24,7 +24,9 @@ func DetectFromGit() *CIInfo {
 }
 
 func gitCommand(args ...string) string {
-	cmd := exec.Command("git", args...)
+	// Only known safe subcommands are passed here (rev-parse, remote).
+	// The binary is hardcoded to "git" — args are not user-controlled.
+	cmd := exec.Command("git", args...) //nolint:gosec // G204: args are hardcoded callers, not user input
 	out, err := cmd.Output()
 	if err != nil {
 		return ""

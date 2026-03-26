@@ -56,7 +56,7 @@ func (c *Client) InitiateUpload(orgSlug string, repoID int, req UploadInitiateRe
 	if err != nil {
 		return nil, fmt.Errorf("initiating upload: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, parseErrorResponse(resp)
@@ -81,7 +81,7 @@ func (c *Client) UploadToPresignedURL(presignedURL string, content []byte) error
 	if err != nil {
 		return fmt.Errorf("uploading to presigned URL: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
@@ -103,7 +103,7 @@ func (c *Client) CompleteUpload(orgSlug string, repoID, uploadID int) error {
 	if err != nil {
 		return fmt.Errorf("completing upload: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return parseErrorResponse(resp)
@@ -124,7 +124,7 @@ func (c *Client) GetUploadStatus(orgSlug string, repoID, uploadID int) (*UploadS
 	if err != nil {
 		return nil, fmt.Errorf("checking upload status: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, parseErrorResponse(resp)

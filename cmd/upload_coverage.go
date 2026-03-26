@@ -53,10 +53,10 @@ func init() {
 }
 
 func runUploadCoverage(cmd *cobra.Command, args []string) error {
-	filePath := args[0]
+	filePath := filepath.Clean(args[0])
 
 	// Read file
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(filePath) //nolint:gosec // G304: path is from CLI args, cleaned above
 	if err != nil {
 		return &ExitError{Code: exitcode.ParseError, Err: fmt.Errorf("reading file %s: %w", filePath, err)}
 	}

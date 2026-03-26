@@ -21,17 +21,17 @@ func SetVerbose(v bool) {
 
 // Info prints an informational message to stdout.
 func Info(format string, args ...any) {
-	fmt.Fprintf(Stdout, format+"\n", args...)
+	_, _ = fmt.Fprintf(Stdout, format+"\n", args...)
 }
 
 // Error prints an error message to stderr.
 func Error(format string, args ...any) {
-	fmt.Fprintf(Stderr, "Error: "+format+"\n", args...)
+	_, _ = fmt.Fprintf(Stderr, "Error: "+format+"\n", args...)
 }
 
 // Verbose prints a message only when verbose mode is enabled.
 func Verbose(format string, args ...any) {
 	if verbose {
-		fmt.Fprintf(Stderr, "[verbose] "+format+"\n", args...)
+		_, _ = fmt.Fprintf(Stderr, "[verbose] "+format+"\n", args...)
 	}
 }

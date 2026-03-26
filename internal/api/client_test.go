@@ -23,11 +23,16 @@ func TestLookupRepo_Success(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]RepoInfo{{ID: 42, Name: "my-service"}})
+		if err := json.NewEncoder(w).Encode([]RepoInfo{{ID: 42, Name: "my-service"}}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-token")
+	client, err := NewClient(server.URL, "test-token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
 	repo, err := client.LookupRepo("acme", "my-service")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -43,12 +48,17 @@ func TestLookupRepo_Success(t *testing.T) {
 func TestLookupRepo_NotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]RepoInfo{})
+		if err := json.NewEncoder(w).Encode([]RepoInfo{}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-token")
-	_, err := client.LookupRepo("acme", "nonexistent")
+	client, err := NewClient(server.URL, "test-token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	_, err = client.LookupRepo("acme", "nonexistent")
 	if err == nil {
 		t.Fatal("expected error for not found repo")
 	}
@@ -57,12 +67,17 @@ func TestLookupRepo_NotFound(t *testing.T) {
 func TestLookupRepo_AuthError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid token"})
+		if err := json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid token"}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "bad-token")
-	_, err := client.LookupRepo("acme", "my-service")
+	client, err := NewClient(server.URL, "bad-token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	_, err = client.LookupRepo("acme", "my-service")
 	if err == nil {
 		t.Fatal("expected error for auth failure")
 	}
@@ -74,15 +89,22 @@ func TestRetries_ServerError(t *testing.T) {
 		attempts++
 		if attempts < 3 {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("server error"))
+			if _, err := w.Write([]byte("server error")); err != nil {
+				t.Fatalf("failed to write response: %v", err)
+			}
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]RepoInfo{{ID: 1, Name: "repo"}})
+		if err := json.NewEncoder(w).Encode([]RepoInfo{{ID: 1, Name: "repo"}}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-token")
+	client, err := NewClient(server.URL, "test-token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
 	repo, err := client.LookupRepo("acme", "repo")
 	if err != nil {
 		t.Fatalf("unexpected error after retries: %v", err)

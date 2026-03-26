@@ -102,7 +102,11 @@ func newClient() (*api.Client, error) {
 		apiURL = "https://app.drape.io"
 	}
 
-	return api.NewClient(apiURL, token), nil
+	client, err := api.NewClient(apiURL, token)
+	if err != nil {
+		return nil, &ExitError{Code: exitcode.UsageError, Err: err}
+	}
+	return client, nil
 }
 
 // resolveRepoID resolves the --repo flag to a numeric repo ID via the API.

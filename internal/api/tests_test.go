@@ -31,15 +31,20 @@ func TestInitiateTestUpload_Success(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(UploadInitiateResponse{
+		if err := json.NewEncoder(w).Encode(UploadInitiateResponse{
 			UploadID:  1,
 			UploadURL: "https://s3.example.com/presigned",
 			ExpiresIn: 3600,
-		})
+		}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-token")
+	client, err := NewClient(server.URL, "test-token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
 	resp, err := client.InitiateTestUpload("acme", 42, TestUploadMetadata{
 		Branch: "main",
 		SHA:    "abc123",
@@ -58,12 +63,17 @@ func TestInitiateTestUpload_Success(t *testing.T) {
 func TestInitiateTestUpload_ServerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("internal error"))
+		if _, err := w.Write([]byte("internal error")); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-token")
-	_, err := client.InitiateTestUpload("acme", 42, TestUploadMetadata{
+	client, err := NewClient(server.URL, "test-token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	_, err = client.InitiateTestUpload("acme", 42, TestUploadMetadata{
 		Branch: "main",
 		SHA:    "abc123",
 	})

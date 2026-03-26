@@ -41,7 +41,7 @@ func runValidateTests(cmd *cobra.Command, args []string) error {
 	var parseErrors int
 
 	for _, f := range files {
-		data, err := os.ReadFile(f)
+		data, err := os.ReadFile(filepath.Clean(f)) //nolint:gosec // G304: path is from CLI args + glob expansion
 		if err != nil {
 			output.Error("Failed to read %s: %v", f, err)
 			parseErrors++
