@@ -154,9 +154,11 @@ func (c *Client) postJSON(url string, reqBody any, result any) error {
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
-	// Preserve seekable body for retry support.
-	if body != nil {
-		httpReq.Body = body.(io.ReadCloser)
+	// Preserve seekable body for retry support and set content length explicitly
+	// (http.NewRequest only auto-detects length for *bytes.Reader, not wrappers).
+	if sr, ok := body.(*seekableReadCloser); ok {
+		httpReq.Body = sr
+		httpReq.ContentLength = int64(sr.Len())
 		httpReq.Header.Set("Content-Type", "application/json")
 	}
 	c.setHeaders(httpReq)
