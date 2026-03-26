@@ -69,6 +69,32 @@ jobs:
       - name: Check build
         run: go build -o /dev/null .
 
+  docker:
+    name: Docker Build & Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417  # v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build binary
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o drape .
+
+      - name: Build Docker image
+        run: |
+          docker build -t drape-cli:ci .
+
+      - name: Scan Docker image with Grype
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          grype drape-cli:ci --fail-on high
+
   security:
     name: Security Scanning
     runs-on: ubuntu-latest
