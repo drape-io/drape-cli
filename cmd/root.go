@@ -147,25 +147,35 @@ func newClient() (*api.Client, error) {
 }
 
 // resolveRepoID resolves the --repo flag to a numeric repo ID via the API.
-func resolveRepoID(client *api.Client, orgSlug string) (int, error) {
+// ciFallback is the repo name extracted from CI-detected RepoSlug (may be empty).
+func resolveRepoID(client *api.Client, orgSlug, ciFallback string) (int, string, error) {
 	repoName := resolveFlag(flagRepo, "DRAPE_REPO")
+	if repoName == "" && ciFallback != "" {
+		output.Verbose("Using CI-detected repo: %s", ciFallback)
+		repoName = ciFallback
+	}
 	if repoName == "" {
-		return 0, &ExitError{Code: exitcode.UsageError, Err: errMissing("--repo or DRAPE_REPO")}
+		return 0, "", &ExitError{Code: exitcode.UsageError, Err: errMissing("--repo, DRAPE_REPO, or CI-detected repo slug")}
 	}
 
 	output.Verbose("Looking up repository %q in org %q...", repoName, orgSlug)
 	repo, err := client.LookupRepo(orgSlug, repoName)
 	if err != nil {
-		return 0, &ExitError{Code: exitcode.UploadError, Err: err}
+		return 0, "", &ExitError{Code: exitcode.UploadError, Err: err}
 	}
 	output.Verbose("Resolved repo %q to ID %d", repoName, repo.ID)
-	return repo.ID, nil
+	return repo.ID, repoName, nil
 }
 
-func resolveOrg() (string, error) {
+// resolveOrg resolves the org slug from flags, env vars, or CI-detected fallback.
+func resolveOrg(ciFallback string) (string, error) {
 	org := resolveFlag(flagOrg, "DRAPE_ORG")
+	if org == "" && ciFallback != "" {
+		output.Verbose("Using CI-detected org: %s", ciFallback)
+		org = ciFallback
+	}
 	if org == "" {
-		return "", &ExitError{Code: exitcode.UsageError, Err: errMissing("--org or DRAPE_ORG")}
+		return "", &ExitError{Code: exitcode.UsageError, Err: errMissing("--org, DRAPE_ORG, or CI-detected repo slug")}
 	}
 	return org, nil
 }
