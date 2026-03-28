@@ -37,13 +37,6 @@ docker run --rm ghcr.io/drape-io/drape-cli version
 docker run --rm -v $(pwd):/work -w /work ghcr.io/drape-io/drape-cli upload tests "**/*.xml"
 ```
 
-### Nix
-
-```bash
-nix run github:drape-io/drape-cli -- version
-nix profile install github:drape-io/drape-cli
-```
-
 ### GitHub Actions
 
 ```yaml
