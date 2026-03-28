@@ -127,10 +127,6 @@ func (e *ExitError) Error() string {
 func newClient() (*api.Client, error) {
 	apiKey := resolveFlag(flagAPIKey, "DRAPE_API_KEY")
 	if apiKey == "" {
-		// Fall back to legacy DRAPE_TOKEN for backwards compatibility
-		apiKey = resolveFlag("", "DRAPE_TOKEN")
-	}
-	if apiKey == "" {
 		return nil, &ExitError{Code: exitcode.UsageError, Err: errMissing("--api-key or DRAPE_API_KEY")}
 	}
 
