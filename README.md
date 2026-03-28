@@ -65,7 +65,6 @@ Set `DRAPE_API_KEY` as an environment variable or pass `--api-key`:
 export DRAPE_API_KEY=drape_tok_xxxx
 ```
 
-> **Note:** `DRAPE_TOKEN` and `--token` are still accepted for backwards compatibility.
 
 ## Commands
 
