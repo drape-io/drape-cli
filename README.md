@@ -2,6 +2,8 @@
 
 Upload test results and coverage reports to [Drape](https://drape.io) from any CI pipeline.
 
+**[Documentation](https://docs.drape.io/)**
+
 ## Installation
 
 ### Homebrew
