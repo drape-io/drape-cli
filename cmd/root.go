@@ -10,6 +10,7 @@ import (
 
 	"github.com/drape-io/drape-cli/internal/api"
 	"github.com/drape-io/drape-cli/internal/exitcode"
+	"github.com/drape-io/drape-cli/internal/oidc"
 	"github.com/drape-io/drape-cli/internal/output"
 )
 
@@ -123,19 +124,38 @@ func (e *ExitError) Error() string {
 	return e.Err.Error()
 }
 
-// newClient creates an API client from global flags, resolving env var defaults.
-func newClient() (*api.Client, error) {
-	apiKey := resolveFlag(flagAPIKey, "DRAPE_API_KEY")
-	if apiKey == "" {
-		return nil, &ExitError{Code: exitcode.UsageError, Err: errMissing("--api-key or DRAPE_API_KEY")}
-	}
-
+// resolveAPIURL returns the API base URL from flags/env, defaulting to https://app.drape.io.
+func resolveAPIURL() string {
 	apiURL := resolveFlag(flagAPIURL, "DRAPE_API_URL")
 	if apiURL == "" {
 		apiURL = "https://app.drape.io"
 	}
+	return apiURL
+}
 
-	client, err := api.NewClient(apiURL, apiKey)
+// newClient creates an API client from global flags, resolving env var defaults.
+// orgSlug is used for OIDC audience construction when no API key is provided.
+func newClient(orgSlug string) (*api.Client, error) {
+	token := resolveFlag(flagAPIKey, "DRAPE_API_KEY")
+	apiURL := resolveAPIURL()
+
+	// If no API key, try OIDC auto-detection from CI environment.
+	if token == "" {
+		oidcToken, err := oidc.DetectAndFetchToken(os.Getenv, apiURL, orgSlug)
+		if err != nil {
+			output.Verbose("OIDC token fetch failed: %v", err)
+		}
+		if oidcToken != "" {
+			output.Info("Authenticated via OIDC")
+			token = oidcToken
+		}
+	}
+
+	if token == "" {
+		return nil, &ExitError{Code: exitcode.UsageError, Err: errMissing("--api-key, DRAPE_API_KEY, or CI OIDC token")}
+	}
+
+	client, err := api.NewClient(apiURL, token)
 	if err != nil {
 		return nil, &ExitError{Code: exitcode.UsageError, Err: err}
 	}

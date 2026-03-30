@@ -85,7 +85,7 @@ func (ctx *uploadContext) resolveClient() error {
 		return err
 	}
 
-	client, err := newClient()
+	client, err := newClient(orgSlug)
 	if err != nil {
 		return err
 	}
