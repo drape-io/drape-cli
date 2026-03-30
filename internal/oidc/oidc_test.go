@@ -11,7 +11,7 @@ import (
 
 func TestDetectAndFetchToken_GitHub(t *testing.T) {
 	wantAudience := "https://app.drape.io/oidc/my-org"
-	wantToken := "eyJhbGciOiJSUzI1NiJ9.test-token"
+	wantToken := "eyJhbGciOiJSUzI1NiJ9.test-token" //nolint:gosec // G101: test fixture, not a real credential
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("audience"); got != wantAudience {
@@ -86,7 +86,7 @@ func TestDetectAndFetchToken_NoProvider(t *testing.T) {
 }
 
 func TestDetectAndFetchToken_GitLabInlineToken(t *testing.T) {
-	wantToken := "eyJhbGciOiJSUzI1NiJ9.gitlab-token"
+	wantToken := "eyJhbGciOiJSUzI1NiJ9.gitlab-token" //nolint:gosec // G101: test fixture, not a real credential
 
 	env := func(key string) string {
 		if key == "DRAPE_OIDC_TOKEN" {
@@ -105,7 +105,7 @@ func TestDetectAndFetchToken_GitLabInlineToken(t *testing.T) {
 }
 
 func TestDetectAndFetchToken_GitLabTokenFile(t *testing.T) {
-	wantToken := "eyJhbGciOiJSUzI1NiJ9.gitlab-token"
+	wantToken := "eyJhbGciOiJSUzI1NiJ9.gitlab-token" //nolint:gosec // G101: test fixture, not a real credential
 
 	dir := t.TempDir()
 	tokenFile := filepath.Join(dir, "token")
