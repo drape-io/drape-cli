@@ -133,29 +133,37 @@ func resolveAPIURL() string {
 	return apiURL
 }
 
-// newClient creates an API client from global flags, resolving env var defaults.
-// orgSlug is used for OIDC audience construction when no API key is provided.
-func newClient(orgSlug string) (*api.Client, error) {
+// resolveToken returns a Bearer token from API key flags/env, falling back to
+// OIDC auto-detection when no API key is provided. orgSlug is needed to
+// construct the OIDC audience URL.
+func resolveToken(orgSlug string) (string, error) {
+	return resolveTokenWith(os.Getenv, orgSlug)
+}
+
+// resolveTokenWith is the testable core of resolveToken. It accepts an env
+// lookup function so tests can inject fake environment variables.
+func resolveTokenWith(env func(string) string, orgSlug string) (string, error) {
 	token := resolveFlag(flagAPIKey, "DRAPE_API_KEY")
-	apiURL := resolveAPIURL()
-
-	// If no API key, try OIDC auto-detection from CI environment.
-	if token == "" {
-		oidcToken, err := oidc.DetectAndFetchToken(os.Getenv, apiURL, orgSlug)
-		if err != nil {
-			output.Verbose("OIDC token fetch failed: %v", err)
-		}
-		if oidcToken != "" {
-			output.Info("Authenticated via OIDC")
-			token = oidcToken
-		}
+	if token != "" {
+		return token, nil
 	}
 
-	if token == "" {
-		return nil, &ExitError{Code: exitcode.UsageError, Err: errMissing("--api-key, DRAPE_API_KEY, or CI OIDC token")}
+	// No API key — try OIDC auto-detection from CI environment.
+	oidcToken, err := oidc.DetectAndFetchToken(env, resolveAPIURL(), orgSlug)
+	if err != nil {
+		output.Verbose("OIDC token fetch failed: %v", err)
+	}
+	if oidcToken != "" {
+		output.Info("Authenticated via OIDC")
+		return oidcToken, nil
 	}
 
-	client, err := api.NewClient(apiURL, token)
+	return "", errMissing("--api-key, DRAPE_API_KEY, or CI OIDC token")
+}
+
+// newClient creates an API client with the given Bearer token.
+func newClient(token string) (*api.Client, error) {
+	client, err := api.NewClient(resolveAPIURL(), token)
 	if err != nil {
 		return nil, &ExitError{Code: exitcode.UsageError, Err: err}
 	}

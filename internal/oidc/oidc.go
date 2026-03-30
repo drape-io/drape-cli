@@ -5,7 +5,7 @@
 // accepts in place of a static API key.
 package oidc
 
-import "os"
+import "strings"
 
 // EnvFunc looks up an environment variable by name.
 type EnvFunc func(string) string
@@ -20,37 +20,23 @@ type Provider interface {
 	FetchToken(audience string) (string, error)
 }
 
-// DetectAndFetchToken tries each known OIDC provider in order.
-// Returns the JWT on success, or ("", nil) if no provider is available.
-func DetectAndFetchToken(env EnvFunc, apiURL, orgSlug string) (string, error) {
-	audience := apiURL + "/oidc/" + orgSlug
-
-	providers := []Provider{
+// providers returns the ordered list of OIDC providers to try.
+func providers(env EnvFunc) []Provider {
+	return []Provider{
 		NewGitHubProvider(env),
 		NewGitLabProvider(env),
 	}
+}
 
-	for _, p := range providers {
+// DetectAndFetchToken tries each known OIDC provider in order.
+// Returns the JWT on success, or ("", nil) if no provider is available.
+func DetectAndFetchToken(env EnvFunc, apiURL, orgSlug string) (string, error) {
+	audience := strings.TrimRight(apiURL, "/") + "/oidc/" + orgSlug
+
+	for _, p := range providers(env) {
 		if p.Available() {
 			return p.FetchToken(audience)
 		}
 	}
 	return "", nil
-}
-
-// DetectProvider returns the first available OIDC provider, or nil.
-func DetectProvider(env EnvFunc) Provider {
-	if env == nil {
-		env = os.Getenv
-	}
-	providers := []Provider{
-		NewGitHubProvider(env),
-		NewGitLabProvider(env),
-	}
-	for _, p := range providers {
-		if p.Available() {
-			return p
-		}
-	}
-	return nil
 }
