@@ -10,7 +10,7 @@ import (
 func TestResolveTokenWith_APIKeyTakesPriority(t *testing.T) {
 	// Set the global flag to simulate --api-key being passed.
 	old := flagAPIKey
-	flagAPIKey = "drp_test_key"
+	flagAPIKey = "drp_test_key" //nolint:gosec // G101: test fixture, not a real credential
 	defer func() { flagAPIKey = old }()
 
 	// Even with OIDC env vars present, the API key should win.
@@ -28,13 +28,13 @@ func TestResolveTokenWith_APIKeyTakesPriority(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if token != "drp_test_key" {
-		t.Errorf("token = %q, want %q", token, "drp_test_key")
+	if token != "drp_test_key" { //nolint:gosec // G101: test fixture comparison
+		t.Errorf("token = %q, want %q", token, "drp_test_key") //nolint:gosec // G101: test fixture comparison
 	}
 }
 
 func TestResolveTokenWith_FallsBackToOIDC(t *testing.T) {
-	wantToken := "eyJhbGciOiJSUzI1NiJ9.oidc-token"
+	wantToken := "eyJhbGciOiJSUzI1NiJ9.oidc-token" //nolint:gosec // G101: test fixture, not a real credential
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
