@@ -51,6 +51,13 @@ func Error(format string, args ...any) {
 	_, _ = fmt.Fprintf(Stderr, "Error: "+format+"\n", args...)
 }
 
+// Warn prints a warning message to stderr without the "Error:" prefix.
+// Warnings are always printed, even in quiet mode, so informational diagnostics
+// (e.g., partial-coverage notices) aren't swallowed.
+func Warn(format string, args ...any) {
+	_, _ = fmt.Fprintf(Stderr, format+"\n", args...)
+}
+
 // Verbose prints a message only when verbose mode is enabled.
 func Verbose(format string, args ...any) {
 	if quiet {

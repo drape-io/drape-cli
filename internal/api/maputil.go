@@ -41,6 +41,15 @@ func getBool(m map[string]any, key string) bool {
 	return false
 }
 
+// getBoolPtr extracts a *bool from a map. Returns nil when the key is absent
+// or not a boolean — distinguishing "not present" from "present and false".
+func getBoolPtr(m map[string]any, key string) *bool {
+	if v, ok := m[key].(bool); ok {
+		return &v
+	}
+	return nil
+}
+
 // getStringSlice extracts a []string from a []any in a map.
 func getStringSlice(m map[string]any, key string) []string {
 	arr, ok := m[key].([]any)

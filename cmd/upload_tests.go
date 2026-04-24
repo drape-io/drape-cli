@@ -17,7 +17,7 @@ var (
 	flagTestPRNumber int
 	flagTestRunDate  string
 	flagTestGroups   []string
-	flagTestRunID    string
+	flagTestDrapeRunID string
 )
 
 var uploadTestsCmd = &cobra.Command{
@@ -34,7 +34,7 @@ func init() {
 	uploadTestsCmd.Flags().IntVar(&flagTestPRNumber, "pr-number", 0, "PR number (auto-detected from CI)")
 	uploadTestsCmd.Flags().StringVar(&flagTestRunDate, "run-date", "", "ISO 8601 date for historical uploads (e.g. 2026-03-15)")
 	uploadTestsCmd.Flags().StringSliceVar(&flagTestGroups, "group", nil, "Group label(s) for this upload (can be specified multiple times)")
-	uploadTestsCmd.Flags().StringVar(&flagTestRunID, "run-id", "", "Drape run ID to correlate triggered CI runs (env: DRAPE_RUN_ID)")
+	uploadTestsCmd.Flags().StringVar(&flagTestDrapeRunID, "drape-run-id", "", "Drape run ID to correlate triggered CI runs (env: DRAPE_RUN_ID)")
 
 	uploadCmd.AddCommand(uploadTestsCmd)
 }
@@ -92,7 +92,7 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 	if len(flagTestGroups) > 0 {
 		metadata["group"] = strings.Join(flagTestGroups, ",")
 	}
-	applyRunIDMetadata(metadata, flagTestRunID, flagTestGroups)
+	applyDrapeRunIDMetadata(metadata, flagTestDrapeRunID, flagTestGroups)
 
 	// Upload each file
 	result, uploadErrors := ctx.uploadFiles("test_results", files, func(_ string) map[string]any { return metadata }, nil)
