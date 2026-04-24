@@ -251,3 +251,55 @@ Coverage checks are enforced by default. When a PR uploads coverage, Drape compa
 These can be configured per-repository in the Drape dashboard.
 
 **Re-uploads:** Coverage can only be uploaded once per commit SHA. If CI re-runs on the same commit, the upload will be rejected. Push a new commit to re-upload coverage.
+
+## Development
+
+Common tasks are wrapped as `just` recipes. Run `just` with no args to see the list.
+
+```bash
+just build         # build bin/drape with version metadata
+just test          # run tests
+just check         # lint + vet + test (pre-push check)
+just ci            # full CI-equivalent pipeline
+just run -- upload coverage coverage.xml --format cobertura   # run the CLI
+```
+
+### Releasing
+
+Releases are tag-triggered: pushing a `v*` tag runs `.github/workflows/release.yml`, which executes `goreleaser release` to build binaries for all platforms, create a GitHub release, publish the Docker image to `ghcr.io/drape-io/drape-cli`, and update the Homebrew tap.
+
+**One-command release:**
+
+```bash
+# On main, clean working tree:
+just release v0.2.0
+```
+
+The recipe validates the version format, checks there's no existing tag, verifies HEAD is on `origin/main` with a clean working tree, runs `just check` as a pre-flight, prompts to confirm, creates an annotated tag, pushes it, and watches the release workflow.
+
+**Manual steps (equivalent):**
+
+```bash
+git checkout main && git pull origin main
+just check                      # pre-flight
+git tag -a v0.2.0 -m "v0.2.0"
+git push origin v0.2.0
+gh run watch                    # pick the "Release" run
+gh release view v0.2.0
+```
+
+**Version scheme:** semver. While on `0.x`, bump the MINOR for new backward-compatible features, PATCH for bug fixes. Breaking changes that users depend on would warrant `1.0.0`.
+
+**Testing goreleaser config** without cutting a real release:
+
+```bash
+just release-snapshot
+```
+
+This runs `goreleaser release --snapshot --clean` — builds binaries into `dist/` with a snapshot version, no tag, no upload.
+
+**If the workflow is already running** (e.g. you started `just release` earlier and detached), tail its output with:
+
+```bash
+just release-watch
+```

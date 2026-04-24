@@ -97,6 +97,31 @@ ci: test-race vet lint build-check security
 release-snapshot:
     goreleaser release --snapshot --clean
 
+# Cut a release: pre-flight, tag, push, watch.
+# Usage: just release v0.3.0
+release VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [[ "{{VERSION}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]] || { echo "version must be vX.Y.Z"; exit 1; }
+    git fetch origin main --tags --quiet
+    [[ -z "$(git status --porcelain)" ]] || { echo "working tree not clean"; exit 1; }
+    [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || { echo "HEAD is not on origin/main"; exit 1; }
+    ! git rev-parse "{{VERSION}}" >/dev/null 2>&1 || { echo "tag {{VERSION}} already exists"; exit 1; }
+    just check
+    read -p "Tag origin/main as {{VERSION}} and push? [y/N] " -n 1 -r; echo
+    [[ $REPLY =~ ^[Yy]$ ]] || exit 1
+    git tag -a "{{VERSION}}" -m "{{VERSION}}"
+    git push origin "{{VERSION}}"
+    sleep 2
+    gh run watch "$(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId')" --exit-status
+    gh release view "{{VERSION}}"
+
+# Tail the most recent release workflow run (for when 'just release' was detached)
+release-watch:
+    #!/usr/bin/env bash
+    run_id=$(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId')
+    gh run watch "$run_id" --exit-status
+
 # Clean build artifacts
 clean:
     rm -rf bin/ dist/
