@@ -22,6 +22,7 @@ var (
 	flagCovTargetBranch string
 	flagCovRunDate      string
 	flagCovGroups       []string
+	flagCovRunID        string
 )
 
 var uploadCoverageCmd = &cobra.Command{
@@ -42,6 +43,7 @@ func init() {
 	uploadCoverageCmd.Flags().StringVar(&flagCovTargetBranch, "target-branch", "", "Target branch for PR diff (auto-detected from CI)")
 	uploadCoverageCmd.Flags().StringVar(&flagCovRunDate, "run-date", "", "ISO 8601 date for historical uploads (e.g. 2026-03-15)")
 	uploadCoverageCmd.Flags().StringSliceVar(&flagCovGroups, "group", nil, "Group label(s) for this upload (can be specified multiple times)")
+	uploadCoverageCmd.Flags().StringVar(&flagCovRunID, "run-id", "", "Drape run ID to correlate triggered CI runs (env: DRAPE_RUN_ID)")
 
 	_ = uploadCoverageCmd.MarkFlagRequired("format")
 
@@ -102,6 +104,7 @@ func buildCoverageMetadata(ctx *uploadContext) map[string]any {
 	if len(flagCovGroups) > 0 {
 		metadata["group"] = strings.Join(flagCovGroups, ",")
 	}
+	applyRunIDMetadata(metadata, flagCovRunID, flagCovGroups)
 	return metadata
 }
 
