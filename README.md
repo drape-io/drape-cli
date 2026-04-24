@@ -127,7 +127,7 @@ Coverage Diff (PR #42)
 | `--wait` | `true` | Wait for processing and show diff results |
 | `--timeout` | `120` | Max wait time in seconds |
 | `--drape-run-id` | (env: `DRAPE_RUN_ID`) | Drape run ID — correlates triggered CI runs (burn-in, bisect) back to the originating batch |
-| `--shard-key` | (auto-detected from `GITHUB_RUN_ID`) | Shared identifier across sibling matrix shards. Enables server-side coverage fan-in. |
+| `--shard-key` | (auto-detected from CI) | Shared identifier across sibling matrix shards. Auto-detected on GitHub Actions, GitLab, CircleCI, Buildkite, Azure Pipelines, Travis, and Bitbucket. |
 | `--total-shards` | `0` (disabled) | Total number of coverage shards across all CI jobs in this run. Enables batch-join mode when ≥ 2. |
 
 #### Matrix shard fan-in (`--total-shards` / `--shard-key`)
@@ -144,7 +144,7 @@ steps:
   - run: drape upload coverage coverage-${{ matrix.shard }}.xml --format cobertura --total-shards 3
 ```
 
-`--shard-key` auto-detects from `GITHUB_RUN_ID` (GitHub Actions) — set it explicitly for other CI providers or local testing. If any shard times out or fails to upload, the batch is finalized as partial after 5 minutes with a warning (exit 0).
+`--shard-key` auto-detects from the CI provider's run ID (see the flag table above) on supported providers. Jenkins has no reliable cross-matrix run ID, so Jenkins users and local-testing scenarios should pass `--shard-key` explicitly. If any shard times out or fails to upload, the batch is finalized as partial after 5 minutes with a warning (exit 0).
 
 ### `drape validate tests <glob>`
 

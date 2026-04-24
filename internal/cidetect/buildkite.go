@@ -8,14 +8,15 @@ func detectBuildkite(env EnvFunc) *CIInfo {
 	}
 
 	info := &CIInfo{
-		Provider:     "buildkite",
-		ProviderName: "Buildkite",
-		CommitSHA:    env("BUILDKITE_COMMIT"),
-		Branch:       env("BUILDKITE_BRANCH"),
-		Tag:          env("BUILDKITE_TAG"),
-		BuildURL:     env("BUILDKITE_BUILD_URL"),
-		BuildNumber:  env("BUILDKITE_BUILD_NUMBER"),
-		JobID:        env("BUILDKITE_JOB_ID"),
+		Provider:      "buildkite",
+		ProviderName:  "Buildkite",
+		CommitSHA:     env("BUILDKITE_COMMIT"),
+		Branch:        env("BUILDKITE_BRANCH"),
+		Tag:           env("BUILDKITE_TAG"),
+		BuildURL:      env("BUILDKITE_BUILD_URL"),
+		BuildNumber:   env("BUILDKITE_BUILD_NUMBER"),
+		JobID:         env("BUILDKITE_JOB_ID"),
+		ProviderRunID: env("BUILDKITE_BUILD_ID"),
 	}
 
 	// Parse repo slug from BUILDKITE_REPO (git URL)

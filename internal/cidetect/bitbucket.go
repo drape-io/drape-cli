@@ -6,14 +6,15 @@ func detectBitbucket(env EnvFunc) *CIInfo {
 	}
 
 	info := &CIInfo{
-		Provider:     "bitbucket-pipelines",
-		ProviderName: "Bitbucket Pipelines",
-		CommitSHA:    env("BITBUCKET_COMMIT"),
-		Branch:       env("BITBUCKET_BRANCH"),
-		Tag:          env("BITBUCKET_TAG"),
-		BuildNumber:  env("BITBUCKET_BUILD_NUMBER"),
-		RepoSlug:     env("BITBUCKET_REPO_FULL_NAME"),
-		JobID:        env("BITBUCKET_STEP_UUID"),
+		Provider:      "bitbucket-pipelines",
+		ProviderName:  "Bitbucket Pipelines",
+		CommitSHA:     env("BITBUCKET_COMMIT"),
+		Branch:        env("BITBUCKET_BRANCH"),
+		Tag:           env("BITBUCKET_TAG"),
+		BuildNumber:   env("BITBUCKET_BUILD_NUMBER"),
+		RepoSlug:      env("BITBUCKET_REPO_FULL_NAME"),
+		JobID:         env("BITBUCKET_STEP_UUID"),
+		ProviderRunID: env("BITBUCKET_BUILD_NUMBER"),
 	}
 
 	// Compose build URL

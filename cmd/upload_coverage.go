@@ -46,7 +46,7 @@ func init() {
 	uploadCoverageCmd.Flags().StringVar(&flagCovRunDate, "run-date", "", "ISO 8601 date for historical uploads (e.g. 2026-03-15)")
 	uploadCoverageCmd.Flags().StringSliceVar(&flagCovGroups, "group", nil, "Group label(s) for this upload (can be specified multiple times)")
 	uploadCoverageCmd.Flags().StringVar(&flagCovDrapeRunID, "drape-run-id", "", "Drape run ID to correlate triggered CI runs (env: DRAPE_RUN_ID)")
-	uploadCoverageCmd.Flags().StringVar(&flagCovShardKey, "shard-key", "", "Shared identifier across sibling matrix shards (e.g., the CI provider's run ID). Auto-detected from GITHUB_RUN_ID in GitHub Actions.")
+	uploadCoverageCmd.Flags().StringVar(&flagCovShardKey, "shard-key", "", "Shared identifier across sibling matrix shards. Auto-detected from the CI provider's run ID (GITHUB_RUN_ID, CI_PIPELINE_ID, CIRCLE_WORKFLOW_ID, BUILDKITE_BUILD_ID, BUILD_BUILDID, TRAVIS_BUILD_ID, BITBUCKET_BUILD_NUMBER).")
 	uploadCoverageCmd.Flags().IntVar(&flagCovTotalShards, "total-shards", 0, "Total number of coverage shards across all CI jobs in this run. Enables server-side batch merging for matrix jobs. Must be 2 or greater.")
 
 	_ = uploadCoverageCmd.MarkFlagRequired("format")

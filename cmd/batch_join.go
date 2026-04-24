@@ -44,7 +44,7 @@ func buildBatchJoinRequest(ci *cidetect.CIInfo, flags batchJoinFlags, fileCount 
 		shardKey = ci.ProviderRunID
 	}
 	if shardKey == "" {
-		return req, fmt.Errorf("--total-shards requires a shard key shared across sibling jobs. In GitHub Actions this is auto-detected from GITHUB_RUN_ID. For other CI providers or local testing, pass --shard-key <your-ci-run-identifier>")
+		return req, fmt.Errorf("--total-shards requires a shard key shared across sibling jobs. This is auto-detected on supported CI providers (GitHub Actions, GitLab, CircleCI, Buildkite, Azure, Travis, Bitbucket). For unsupported providers (including Jenkins) or local testing, pass --shard-key <your-ci-run-identifier>")
 	}
 
 	if ci != nil && ci.RunAttemptErr != nil {
@@ -66,8 +66,12 @@ func buildBatchJoinRequest(ci *cidetect.CIInfo, flags batchJoinFlags, fileCount 
 		metadata["group"] = strings.Join(groups, ",")
 	}
 
+	// Default to 1 for non-GitHub providers (their CIInfo leaves RunAttempt at zero).
+	// GitHub populates it from GITHUB_RUN_ATTEMPT. Without this guard, omitempty
+	// would strip run_attempt=0 from the JSON and the server would silently fall
+	// back to legacy non-dedup mode.
 	runAttempt := 1
-	if ci != nil {
+	if ci != nil && ci.RunAttempt > 0 {
 		runAttempt = ci.RunAttempt
 	}
 

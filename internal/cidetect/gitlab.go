@@ -6,15 +6,16 @@ func detectGitLab(env EnvFunc) *CIInfo {
 	}
 
 	info := &CIInfo{
-		Provider:     "gitlab-ci",
-		ProviderName: "GitLab CI",
-		BuildURL:     env("CI_JOB_URL"),
-		BuildNumber:  env("CI_PIPELINE_IID"),
-		Branch:       env("CI_COMMIT_BRANCH"),
-		Tag:          env("CI_COMMIT_TAG"),
-		RepoURL:      env("CI_PROJECT_URL"),
-		RepoSlug:     env("CI_PROJECT_PATH"),
-		JobID:        env("CI_JOB_ID"),
+		Provider:      "gitlab-ci",
+		ProviderName:  "GitLab CI",
+		BuildURL:      env("CI_JOB_URL"),
+		BuildNumber:   env("CI_PIPELINE_IID"),
+		Branch:        env("CI_COMMIT_BRANCH"),
+		Tag:           env("CI_COMMIT_TAG"),
+		RepoURL:       env("CI_PROJECT_URL"),
+		RepoSlug:      env("CI_PROJECT_PATH"),
+		JobID:         env("CI_JOB_ID"),
+		ProviderRunID: env("CI_PIPELINE_ID"),
 	}
 
 	// 3-level SHA fallback chain:

@@ -61,8 +61,8 @@ func TestBuildBatchJoinRequest_RequiresShardKeyFromFlagOrEnv(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "--total-shards requires a shard key") {
 		t.Fatalf("expected missing-shard-key error, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "GITHUB_RUN_ID") || !strings.Contains(err.Error(), "--shard-key") {
-		t.Fatalf("error should mention both auto-detect source and flag fallback: %v", err)
+	if !strings.Contains(err.Error(), "auto-detected") || !strings.Contains(err.Error(), "--shard-key") {
+		t.Fatalf("error should mention auto-detection and flag fallback: %v", err)
 	}
 }
 
@@ -181,6 +181,38 @@ func TestBuildBatchJoinRequest_CoexistsWithDrapeRunID(t *testing.T) {
 	// The drape-prefixed group stays — join doesn't clobber applyDrapeRunIDMetadata's default.
 	if metadata["group"] != "drape:drape-foo" {
 		t.Errorf("metadata[group] changed unexpectedly: %q", metadata["group"])
+	}
+}
+
+func TestBuildBatchJoinRequest_AutoDerivesFromNonGitHubProviders(t *testing.T) {
+	// Non-GitHub providers populate ProviderRunID but leave RunAttempt at the
+	// int zero value. Without the guard in buildBatchJoinRequest, omitempty would
+	// strip run_attempt from the JSON and the server would silently fall back to
+	// legacy non-dedup mode.
+	cases := []struct {
+		provider string
+		ci       *cidetect.CIInfo
+	}{
+		{"gitlab-ci", &cidetect.CIInfo{Provider: "gitlab-ci", ProviderRunID: "12345"}},
+		{"circleci", &cidetect.CIInfo{Provider: "circleci", ProviderRunID: "wf-uuid"}},
+		{"buildkite", &cidetect.CIInfo{Provider: "buildkite", ProviderRunID: "build-uuid"}},
+		{"azure-pipelines", &cidetect.CIInfo{Provider: "azure-pipelines", ProviderRunID: "987"}},
+		{"travis-ci", &cidetect.CIInfo{Provider: "travis-ci", ProviderRunID: "555"}},
+		{"bitbucket-pipelines", &cidetect.CIInfo{Provider: "bitbucket-pipelines", ProviderRunID: "42"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.provider, func(t *testing.T) {
+			req, err := buildBatchJoinRequest(tc.ci, batchJoinFlags{TotalShards: 3}, 1, "main", "abc", map[string]any{})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if req.ProviderRunID != tc.ci.ProviderRunID {
+				t.Errorf("ProviderRunID = %q; want %q", req.ProviderRunID, tc.ci.ProviderRunID)
+			}
+			if req.RunAttempt != 1 {
+				t.Errorf("RunAttempt = %d; want 1 (default when provider does not populate it)", req.RunAttempt)
+			}
+		})
 	}
 }
 
