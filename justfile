@@ -97,48 +97,24 @@ ci: test-race vet lint build-check security
 release-snapshot:
     goreleaser release --snapshot --clean
 
-# Cut a release: validate inputs, pre-flight checks, tag, push, watch.
-# Usage: just release v0.2.0
+# Cut a release: pre-flight, tag, push, watch.
+# Usage: just release v0.3.0
 release VERSION:
     #!/usr/bin/env bash
     set -euo pipefail
-    VERSION="{{VERSION}}"
-    if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-        echo "error: version must be vX.Y.Z or vX.Y.Z-suffix (got: $VERSION)" >&2
-        exit 1
-    fi
-    if git rev-parse "$VERSION" >/dev/null 2>&1; then
-        echo "error: tag $VERSION already exists" >&2
-        exit 1
-    fi
-    if [[ -n "$(git status --porcelain)" ]]; then
-        echo "error: working tree has uncommitted changes" >&2
-        git status --short >&2
-        exit 1
-    fi
+    [[ "{{VERSION}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]] || { echo "version must be vX.Y.Z"; exit 1; }
     git fetch origin main --tags --quiet
-    local_sha=$(git rev-parse HEAD)
-    main_sha=$(git rev-parse origin/main)
-    if [[ "$local_sha" != "$main_sha" ]]; then
-        echo "error: HEAD ($local_sha) is not on origin/main ($main_sha)" >&2
-        echo "       checkout main and pull before releasing" >&2
-        exit 1
-    fi
-    echo "Pre-flight: running tests + vet + lint against $VERSION target..."
+    [[ -z "$(git status --porcelain)" ]] || { echo "working tree not clean"; exit 1; }
+    [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || { echo "HEAD is not on origin/main"; exit 1; }
+    ! git rev-parse "{{VERSION}}" >/dev/null 2>&1 || { echo "tag {{VERSION}} already exists"; exit 1; }
     just check
-    echo ""
-    echo "About to tag origin/main ($main_sha) as $VERSION and push."
-    read -p "Continue? [y/N] " -n 1 -r; echo
-    [[ ! $REPLY =~ ^[Yy]$ ]] && { echo "aborted"; exit 1; }
-    git tag -a "$VERSION" -m "$VERSION"
-    git push origin "$VERSION"
-    echo ""
-    echo "Tag pushed. Watching release workflow (Ctrl-C to detach — release continues)."
-    sleep 3
-    run_id=$(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId')
-    gh run watch "$run_id" --exit-status || { echo "release workflow failed"; exit 1; }
-    echo ""
-    gh release view "$VERSION"
+    read -p "Tag origin/main as {{VERSION}} and push? [y/N] " -n 1 -r; echo
+    [[ $REPLY =~ ^[Yy]$ ]] || exit 1
+    git tag -a "{{VERSION}}" -m "{{VERSION}}"
+    git push origin "{{VERSION}}"
+    sleep 2
+    gh run watch "$(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId')" --exit-status
+    gh release view "{{VERSION}}"
 
 # Tail the most recent release workflow run (for when 'just release' was detached)
 release-watch:
