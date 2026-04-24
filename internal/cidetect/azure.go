@@ -8,14 +8,15 @@ func detectAzure(env EnvFunc) *CIInfo {
 	}
 
 	info := &CIInfo{
-		Provider:     "azure-pipelines",
-		ProviderName: "Azure Pipelines",
-		CommitSHA:    env("BUILD_SOURCEVERSION"),
-		BuildURL:     env("SYSTEM_TEAMFOUNDATIONSERVERURI") + env("SYSTEM_TEAMPROJECT") + "/_build/results?buildId=" + env("BUILD_BUILDID"),
-		BuildNumber:  env("BUILD_BUILDNUMBER"),
-		RepoURL:      env("BUILD_REPOSITORY_URI"),
-		RepoSlug:     env("BUILD_REPOSITORY_NAME"),
-		JobID:        env("SYSTEM_JOBID"),
+		Provider:      "azure-pipelines",
+		ProviderName:  "Azure Pipelines",
+		CommitSHA:     env("BUILD_SOURCEVERSION"),
+		BuildURL:      env("SYSTEM_TEAMFOUNDATIONSERVERURI") + env("SYSTEM_TEAMPROJECT") + "/_build/results?buildId=" + env("BUILD_BUILDID"),
+		BuildNumber:   env("BUILD_BUILDNUMBER"),
+		RepoURL:       env("BUILD_REPOSITORY_URI"),
+		RepoSlug:      env("BUILD_REPOSITORY_NAME"),
+		JobID:         env("SYSTEM_JOBID"),
+		ProviderRunID: env("BUILD_BUILDID"),
 	}
 
 	// Strip refs/heads/ from branch

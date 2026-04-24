@@ -33,6 +33,10 @@ type CoverageResult struct {
 	CoverageRate       *string           `json:"coverage_rate,omitempty"`
 	FileCount          *int              `json:"file_count,omitempty"`
 	CoverageDiff       *CoverageDiffInfo `json:"coverage_diff,omitempty"`
+	// Partial is set on batch status responses when the server reaper finalized
+	// the batch with fewer than expected_count shards. Always nil for
+	// individual-upload responses.
+	Partial *bool `json:"partial,omitempty"`
 }
 
 // CoverageStatusResponse is the CLI-facing status for a coverage upload.
@@ -81,6 +85,7 @@ func mapCoverageResult(m map[string]any) CoverageResult {
 		CoverageSnapshotID: getInt(m, "snapshot_id"),
 		CoverageRate:       getString(m, "coverage_rate"),
 		FileCount:          getInt(m, "file_count"),
+		Partial:            getBoolPtr(m, "partial"),
 	}
 	if diffMap, ok := m["coverage_diff"].(map[string]any); ok {
 		result.CoverageDiff = mapCoverageDiff(diffMap)
@@ -89,12 +94,19 @@ func mapCoverageResult(m map[string]any) CoverageResult {
 }
 
 // CoverageBatchRequest is the request body for creating a coverage upload batch.
+//
+// ProviderRunID + RunAttempt engage the server's natural-key upsert path when
+// both are set (matrix-shard fan-in). Leaving them zero/empty keeps the server
+// on its legacy "always create fresh batch" path. group is carried inside
+// Metadata (server reads it via metadata.get("group")), not as a top-level field.
 type CoverageBatchRequest struct {
 	ExpectedCount int            `json:"expected_count"`
 	UploadType    string         `json:"upload_type"`
 	Branch        string         `json:"branch"`
 	SHA           string         `json:"sha"`
 	Metadata      map[string]any `json:"metadata,omitempty"`
+	ProviderRunID string         `json:"provider_run_id,omitempty"`
+	RunAttempt    int            `json:"run_attempt,omitempty"`
 }
 
 // CoverageBatchResponse is the response from creating a coverage upload batch.

@@ -6,15 +6,16 @@ func detectCircleCI(env EnvFunc) *CIInfo {
 	}
 
 	info := &CIInfo{
-		Provider:     "circleci",
-		ProviderName: "CircleCI",
-		CommitSHA:    env("CIRCLE_SHA1"),
-		Branch:       env("CIRCLE_BRANCH"),
-		Tag:          env("CIRCLE_TAG"),
-		BuildURL:     env("CIRCLE_BUILD_URL"),
-		BuildNumber:  env("CIRCLE_BUILD_NUM"),
-		RepoURL:      env("CIRCLE_REPOSITORY_URL"),
-		JobID:        env("CIRCLE_WORKFLOW_JOB_ID"),
+		Provider:      "circleci",
+		ProviderName:  "CircleCI",
+		CommitSHA:     env("CIRCLE_SHA1"),
+		Branch:        env("CIRCLE_BRANCH"),
+		Tag:           env("CIRCLE_TAG"),
+		BuildURL:      env("CIRCLE_BUILD_URL"),
+		BuildNumber:   env("CIRCLE_BUILD_NUM"),
+		RepoURL:       env("CIRCLE_REPOSITORY_URL"),
+		JobID:         env("CIRCLE_WORKFLOW_JOB_ID"),
+		ProviderRunID: env("CIRCLE_WORKFLOW_ID"),
 	}
 
 	// Repo slug from project components

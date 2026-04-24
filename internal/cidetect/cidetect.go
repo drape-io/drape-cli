@@ -16,6 +16,9 @@ type CIInfo struct {
 	PRNumber      string
 	IsPullRequest bool
 	JobID         string
+	ProviderRunID string // GITHUB_RUN_ID etc. — used as batch natural-key component
+	RunAttempt    int    // GITHUB_RUN_ATTEMPT parsed as int; defaults to 1 when unset
+	RunAttemptErr error  // non-nil if the attempt env var was set but unparseable
 }
 
 // EnvFunc looks up an environment variable by name.

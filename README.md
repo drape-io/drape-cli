@@ -77,9 +77,9 @@ When `--wait` is used (default), the CLI waits for server-side processing and pr
 
 If the upload reveals new tests that haven't been seen before, they're listed at the end of the summary (capped at 10) with a suggestion to verify stability via burn-in from the Drape dashboard.
 
-#### Triggered runs (`--run-id` / `DRAPE_RUN_ID`)
+#### Triggered runs (`--drape-run-id` / `DRAPE_RUN_ID`)
 
-When the Drape dashboard triggers a CI run (burn-in, bisect), it passes a `drape_run_id` UUID to the workflow. Set it as the `DRAPE_RUN_ID` env var (or pass `--run-id`) and the CLI will:
+When the Drape dashboard triggers a CI run (burn-in, bisect), it passes a `drape_run_id` UUID to the workflow. Set it as the `DRAPE_RUN_ID` env var (or pass `--drape-run-id`) and the CLI will:
 
 - include `run_id` in the upload metadata so the server can correlate the run to the originating batch
 - automatically tag the upload with `--group drape:{run_id}` (unless an explicit `--group` is provided)
@@ -126,7 +126,25 @@ Coverage Diff (PR #42)
 | `--target-branch` | (auto-detected) | Base branch for PR diff comparison |
 | `--wait` | `true` | Wait for processing and show diff results |
 | `--timeout` | `120` | Max wait time in seconds |
-| `--run-id` | (env: `DRAPE_RUN_ID`) | Drape run ID — correlates triggered CI runs (burn-in, bisect) back to the originating batch |
+| `--drape-run-id` | (env: `DRAPE_RUN_ID`) | Drape run ID — correlates triggered CI runs (burn-in, bisect) back to the originating batch |
+| `--shard-key` | (auto-detected from CI) | Shared identifier across sibling matrix shards. Auto-detected on GitHub Actions, GitLab, CircleCI, Buildkite, Azure Pipelines, Travis, and Bitbucket. |
+| `--total-shards` | `0` (disabled) | Total number of coverage shards across all CI jobs in this run. Enables batch-join mode when ≥ 2. |
+
+#### Matrix shard fan-in (`--total-shards` / `--shard-key`)
+
+When tests run across a matrix in CI, each shard uploads its own coverage file. Set `--total-shards N` on each shard and the server merges them into a single coverage report using a natural-key upsert — no separate "upload consolidation" CI job needed.
+
+```yaml
+# GitHub Actions matrix
+strategy:
+  matrix:
+    shard: [1, 2, 3]
+steps:
+  - run: pytest --cov --cov-report=xml:coverage-${{ matrix.shard }}.xml
+  - run: drape upload coverage coverage-${{ matrix.shard }}.xml --format cobertura --total-shards 3
+```
+
+`--shard-key` auto-detects from the CI provider's run ID (see the flag table above) on supported providers. Jenkins has no reliable cross-matrix run ID, so Jenkins users and local-testing scenarios should pass `--shard-key` explicitly. If any shard times out or fails to upload, the batch is finalized as partial after 5 minutes with a warning (exit 0).
 
 ### `drape validate tests <glob>`
 
