@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/drape-io/drape-cli/internal/api"
 	"github.com/drape-io/drape-cli/internal/exitcode"
 	"github.com/drape-io/drape-cli/internal/output"
 )
@@ -16,6 +17,7 @@ var (
 	flagTestPRNumber int
 	flagTestRunDate  string
 	flagTestGroups   []string
+	flagTestRunID    string
 )
 
 var uploadTestsCmd = &cobra.Command{
@@ -32,6 +34,7 @@ func init() {
 	uploadTestsCmd.Flags().IntVar(&flagTestPRNumber, "pr-number", 0, "PR number (auto-detected from CI)")
 	uploadTestsCmd.Flags().StringVar(&flagTestRunDate, "run-date", "", "ISO 8601 date for historical uploads (e.g. 2026-03-15)")
 	uploadTestsCmd.Flags().StringSliceVar(&flagTestGroups, "group", nil, "Group label(s) for this upload (can be specified multiple times)")
+	uploadTestsCmd.Flags().StringVar(&flagTestRunID, "run-id", "", "Drape run ID to correlate triggered CI runs (env: DRAPE_RUN_ID)")
 
 	uploadCmd.AddCommand(uploadTestsCmd)
 }
@@ -89,6 +92,7 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 	if len(flagTestGroups) > 0 {
 		metadata["group"] = strings.Join(flagTestGroups, ",")
 	}
+	applyRunIDMetadata(metadata, flagTestRunID, flagTestGroups)
 
 	// Upload each file
 	result, uploadErrors := ctx.uploadFiles("test_results", files, func(_ string) map[string]any { return metadata }, nil)
@@ -164,6 +168,31 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 	}
 	if processingErrors > 0 {
 		output.Info("  Process errors: %d", processingErrors)
+	}
+
+	// Display new test detection
+	var newTests []string
+	for _, u := range result.Uploads {
+		if status, ok := u.Result.(*api.TestStatusResponse); ok {
+			newTests = append(newTests, status.NewTestsDetected...)
+		}
+	}
+	if len(newTests) > 0 {
+		output.Info("")
+		if len(newTests) == 1 {
+			output.Info("1 new test detected:")
+		} else {
+			output.Info("%d new tests detected:", len(newTests))
+		}
+		const maxDisplay = 10
+		for i, t := range newTests {
+			if i >= maxDisplay {
+				output.Info("  ...and %d more", len(newTests)-maxDisplay)
+				break
+			}
+			output.Info("  - %s", t)
+		}
+		output.Info("Consider burn-in via Drape dashboard to verify stability.")
 	}
 
 	return testUploadExitError(totalFailed, totalUnsuppressedFailures, processingErrors, totalIngested)

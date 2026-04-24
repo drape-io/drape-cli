@@ -75,6 +75,17 @@ drape upload tests "./reports/**/*.xml" \
 
 When `--wait` is used (default), the CLI waits for server-side processing and prints a summary including suppression status. Exit code reflects whether unsuppressed failures exist.
 
+If the upload reveals new tests that haven't been seen before, they're listed at the end of the summary (capped at 10) with a suggestion to verify stability via burn-in from the Drape dashboard.
+
+#### Triggered runs (`--run-id` / `DRAPE_RUN_ID`)
+
+When the Drape dashboard triggers a CI run (burn-in, bisect), it passes a `drape_run_id` UUID to the workflow. Set it as the `DRAPE_RUN_ID` env var (or pass `--run-id`) and the CLI will:
+
+- include `run_id` in the upload metadata so the server can correlate the run to the originating batch
+- automatically tag the upload with `--group drape:{run_id}` (unless an explicit `--group` is provided)
+
+This applies to both `drape upload tests` and `drape upload coverage`.
+
 ### `drape upload coverage <file>`
 
 Upload a coverage report (Cobertura XML, LCOV, or Go coverage profile).
@@ -115,6 +126,7 @@ Coverage Diff (PR #42)
 | `--target-branch` | (auto-detected) | Base branch for PR diff comparison |
 | `--wait` | `true` | Wait for processing and show diff results |
 | `--timeout` | `120` | Max wait time in seconds |
+| `--run-id` | (env: `DRAPE_RUN_ID`) | Drape run ID — correlates triggered CI runs (burn-in, bisect) back to the originating batch |
 
 ### `drape validate tests <glob>`
 

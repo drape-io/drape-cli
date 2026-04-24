@@ -14,6 +14,7 @@ type TestStatusResponse struct {
 	SuppressedTests          []string `json:"suppressed_tests,omitempty"`
 	FailedCount              *int     `json:"failed_count,omitempty"`
 	UnsuppressedFailureCount *int     `json:"unsuppressed_failure_count,omitempty"`
+	NewTestsDetected         []string `json:"new_tests_detected,omitempty"`
 	ErrorMessage              *string  `json:"error_message,omitempty"`
 }
 
@@ -47,6 +48,7 @@ func mapTestStatus(raw *UploadStatusResponse) *TestStatusResponse {
 		result.SuppressedTests = getStringSlice(raw.Result, "suppressed_tests")
 		result.FailedCount = getInt(raw.Result, "failed_count")
 		result.UnsuppressedFailureCount = getInt(raw.Result, "unsuppressed_failure_count")
+		result.NewTestsDetected = getStringSlice(raw.Result, "new_tests_detected")
 	}
 
 	return result
