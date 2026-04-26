@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/drape-io/drape-cli/internal/api"
 	"github.com/drape-io/drape-cli/internal/cidetect"
@@ -129,11 +128,6 @@ func (ctx *uploadContext) uploadFile(uploadType, filename string, data []byte, m
 	}
 
 	return initResp.UploadID, nil
-}
-
-// pollTimeout returns the configured wait timeout as a time.Duration.
-func (ctx *uploadContext) pollTimeout() time.Duration {
-	return time.Duration(flagUploadTimeout) * time.Second
 }
 
 // drapeURL constructs a dashboard URL for the given upload ID.

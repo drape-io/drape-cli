@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -101,7 +100,6 @@ func runUploadCoverage(cmd *cobra.Command, args []string) error {
 				ProviderRunID: req.ProviderRunID,
 				RunAttempt:    req.RunAttempt,
 			},
-			timeoutMultiplier:    1,
 			failOnLocalUploadErr: false,
 		})
 	}
@@ -111,7 +109,6 @@ func runUploadCoverage(cmd *cobra.Command, args []string) error {
 	}
 	return runBatchCoverageUpload(ctx, files, metadata, batchOptions{
 		expectedCount:        len(files),
-		timeoutMultiplier:    len(files),
 		failOnLocalUploadErr: true,
 	})
 }
@@ -130,7 +127,6 @@ type naturalKey struct {
 type batchOptions struct {
 	expectedCount        int         // server-advertised expected_count (from --total-shards in join mode, len(files) otherwise)
 	naturalKey           *naturalKey // nil → legacy "always create fresh" server path; populated → natural-key upsert
-	timeoutMultiplier    int         // multiplies flagUploadTimeout for poll wait; legacy uses len(files), join uses 1
 	failOnLocalUploadErr bool        // true: fail early if any of our local uploads fail (legacy); false: sibling shards may still finalize the batch (join)
 }
 
@@ -186,8 +182,8 @@ func runSingleCoverageUpload(ctx *uploadContext, filePath string, metadata map[s
 		return nil
 	}
 
-	output.Info("Waiting for processing (timeout: %ds)...", flagUploadTimeout)
-	status, err := ctx.client.PollCoverageStatus(ctx.orgSlug, ctx.repoID, uploadID, ctx.pollTimeout())
+	output.Info("Waiting for processing (timeout: %s)...", flagUploadWaitTimeout)
+	status, err := ctx.client.PollCoverageStatus(ctx.orgSlug, ctx.repoID, uploadID, flagUploadWaitTimeout)
 	if err != nil {
 		if status != nil && status.Status == "failed" {
 			return &ExitError{Code: exitcode.UploadError, Err: err}
@@ -252,15 +248,9 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 		return nil
 	}
 
-	// Cap batch timeout at 4 minutes to stay under the server-side 5-minute reaper.
-	batchTimeout := time.Duration(flagUploadTimeout) * time.Second * time.Duration(opts.timeoutMultiplier)
-	const maxBatchTimeout = 4 * time.Minute
-	if batchTimeout > maxBatchTimeout {
-		batchTimeout = maxBatchTimeout
-	}
-	output.Info("Waiting for batch processing (timeout: %ds)...", int(batchTimeout.Seconds()))
+	output.Info("Waiting for batch processing (timeout: %s)...", flagUploadWaitTimeout)
 
-	batchStatus, err := ctx.client.PollCoverageBatchStatus(ctx.orgSlug, ctx.repoID, batchResp.BatchID, batchTimeout)
+	batchStatus, err := ctx.client.PollCoverageBatchStatus(ctx.orgSlug, ctx.repoID, batchResp.BatchID, flagUploadWaitTimeout)
 	if err != nil {
 		if batchStatus != nil && batchStatus.Status == "failed" {
 			return &ExitError{Code: exitcode.UploadError, Err: err}
