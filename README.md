@@ -70,7 +70,7 @@ drape upload tests "./reports/**/*.xml" \
   --org acme \
   --repo my-service \
   --wait \
-  --timeout 120
+  --wait-timeout 3m
 ```
 
 When `--wait` is used (default), the CLI waits for server-side processing and prints a summary including suppression status. Exit code reflects whether unsuppressed failures exist.
@@ -125,7 +125,7 @@ Coverage Diff (PR #42)
 | `--path-prefix` | | Path prefix for mapping coverage paths to repo paths |
 | `--target-branch` | (auto-detected) | Base branch for PR diff comparison |
 | `--wait` | `true` | Wait for processing and show diff results |
-| `--timeout` | `120` | Max wait time in seconds |
+| `--wait-timeout` | `3m` | Max wait time as a Go duration (e.g. `90s`, `3m`, `10m`) |
 | `--drape-run-id` | (env: `DRAPE_RUN_ID`) | Drape run ID — correlates triggered CI runs (burn-in, bisect) back to the originating batch |
 | `--shard-key` | (auto-detected from CI) | Shared identifier across sibling matrix shards. Auto-detected on GitHub Actions, GitLab, CircleCI, Buildkite, Azure Pipelines, Travis, and Bitbucket. |
 | `--total-shards` | `0` (disabled) | Total number of coverage shards across all CI jobs in this run. Enables batch-join mode when ≥ 2. |

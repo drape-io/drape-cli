@@ -110,7 +110,7 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	output.Info("Waiting for processing (timeout: %ds)...", flagUploadTimeout)
+	output.Info("Waiting for processing (timeout: %s)...", flagUploadWaitTimeout)
 
 	var totalIngested int
 	var totalSuppressed int
@@ -119,7 +119,7 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 	var processingErrors int
 
 	for i, u := range result.Uploads {
-		status, err := ctx.client.PollTestStatus(ctx.orgSlug, ctx.repoID, u.UploadID, ctx.pollTimeout())
+		status, err := ctx.client.PollTestStatus(ctx.orgSlug, ctx.repoID, u.UploadID, flagUploadWaitTimeout)
 		if err != nil {
 			if status != nil && status.Status == "failed" {
 				output.Error("  %s: processing failed: %v", u.Filename, err)

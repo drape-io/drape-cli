@@ -126,14 +126,14 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	output.Info("Waiting for processing (timeout: %ds)...", flagUploadTimeout)
+	output.Info("Waiting for processing (timeout: %s)...", flagUploadWaitTimeout)
 
 	var lastDiffErr error
 	var processingErrors int
 	var hasUnsuppressedVulns bool
 
 	for i, u := range result.Uploads {
-		status, err := ctx.client.PollScanStatus(ctx.orgSlug, ctx.repoID, u.UploadID, ctx.pollTimeout())
+		status, err := ctx.client.PollScanStatus(ctx.orgSlug, ctx.repoID, u.UploadID, flagUploadWaitTimeout)
 		if err != nil {
 			if status != nil && status.Status == "failed" {
 				output.Error("  %s: processing failed: %v", u.Filename, err)

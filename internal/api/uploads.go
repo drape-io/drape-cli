@@ -97,18 +97,24 @@ type pollResult struct {
 	ErrorMessage *string
 }
 
+// pollInitialInterval and pollMaxInterval are package-level so tests can
+// shrink them. Production callers use the defaults.
+var (
+	pollInitialInterval = 1 * time.Second
+	pollMaxInterval     = 10 * time.Second
+)
+
 // pollWithBackoff runs fetchFn in a loop with exponential backoff until it returns
-// a terminal status ("completed" or "failed") or the timeout expires.
+// a terminal status ("completed" or "failed") or the timeout expires. The deadline
+// is checked AFTER each fetch, so when time runs out we always have one fresh
+// status — covers the case where the server finalized the batch during our last
+// sleep but before our giving-up message would have fired.
 func (c *Client) pollWithBackoff(timeout time.Duration, label string, fetchFn func() (*pollResult, error)) error {
 	deadline := time.Now().Add(timeout)
-	interval := 1 * time.Second
-	maxInterval := 10 * time.Second
+	interval := pollInitialInterval
+	maxInterval := pollMaxInterval
 
 	for {
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timed out waiting for %s processing after %v", label, timeout)
-		}
-
 		result, err := fetchFn()
 		if err != nil {
 			return err
@@ -123,6 +129,10 @@ func (c *Client) pollWithBackoff(timeout time.Duration, label string, fetchFn fu
 				msg = *result.ErrorMessage
 			}
 			return fmt.Errorf("%s processing failed: %s", label, msg)
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for %s processing after %v", label, timeout)
 		}
 
 		output.Verbose("%s status: %s, waiting %v...", label, result.Status, interval)

@@ -1,13 +1,17 @@
 package cmd
 
-import "github.com/spf13/cobra"
+import (
+	"time"
+
+	"github.com/spf13/cobra"
+)
 
 // Shared flags for all upload subcommands.
 var (
-	flagUploadBranch  string
-	flagUploadSHA     string
-	flagUploadWait    bool
-	flagUploadTimeout int
+	flagUploadBranch      string
+	flagUploadSHA         string
+	flagUploadWait        bool
+	flagUploadWaitTimeout time.Duration
 )
 
 var uploadCmd = &cobra.Command{
@@ -19,7 +23,7 @@ func init() {
 	uploadCmd.PersistentFlags().StringVar(&flagUploadBranch, "branch", "", "Git branch (auto-detected from CI)")
 	uploadCmd.PersistentFlags().StringVar(&flagUploadSHA, "sha", "", "Git commit SHA (auto-detected from CI)")
 	uploadCmd.PersistentFlags().BoolVar(&flagUploadWait, "wait", true, "Wait for server-side processing")
-	uploadCmd.PersistentFlags().IntVar(&flagUploadTimeout, "timeout", 120, "Max wait time in seconds")
+	uploadCmd.PersistentFlags().DurationVar(&flagUploadWaitTimeout, "wait-timeout", 3*time.Minute, "Max wait time as a Go duration (e.g. 90s, 3m, 10m)")
 
 	rootCmd.AddCommand(uploadCmd)
 }
