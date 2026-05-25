@@ -10,6 +10,7 @@ import (
 
 	"github.com/drape-io/drape-cli/internal/api"
 	"github.com/drape-io/drape-cli/internal/exitcode"
+	"github.com/drape-io/drape-cli/internal/oidc"
 	"github.com/drape-io/drape-cli/internal/output"
 )
 
@@ -123,19 +124,46 @@ func (e *ExitError) Error() string {
 	return e.Err.Error()
 }
 
-// newClient creates an API client from global flags, resolving env var defaults.
-func newClient() (*api.Client, error) {
-	apiKey := resolveFlag(flagAPIKey, "DRAPE_API_KEY")
-	if apiKey == "" {
-		return nil, &ExitError{Code: exitcode.UsageError, Err: errMissing("--api-key or DRAPE_API_KEY")}
-	}
-
+// resolveAPIURL returns the API base URL from flags/env, defaulting to https://app.drape.io.
+func resolveAPIURL() string {
 	apiURL := resolveFlag(flagAPIURL, "DRAPE_API_URL")
 	if apiURL == "" {
 		apiURL = "https://app.drape.io"
 	}
+	return apiURL
+}
 
-	client, err := api.NewClient(apiURL, apiKey)
+// resolveToken returns a Bearer token from API key flags/env, falling back to
+// OIDC auto-detection when no API key is provided. orgSlug is needed to
+// construct the OIDC audience URL.
+func resolveToken(orgSlug string) (string, error) {
+	return resolveTokenWith(os.Getenv, orgSlug)
+}
+
+// resolveTokenWith is the testable core of resolveToken. It accepts an env
+// lookup function so tests can inject fake environment variables.
+func resolveTokenWith(env func(string) string, orgSlug string) (string, error) {
+	token := resolveFlag(flagAPIKey, "DRAPE_API_KEY")
+	if token != "" {
+		return token, nil
+	}
+
+	// No API key — try OIDC auto-detection from CI environment.
+	oidcToken, err := oidc.DetectAndFetchToken(env, resolveAPIURL(), orgSlug)
+	if err != nil {
+		output.Verbose("OIDC token fetch failed: %v", err)
+	}
+	if oidcToken != "" {
+		output.Info("Authenticated via OIDC")
+		return oidcToken, nil
+	}
+
+	return "", errMissing("--api-key, DRAPE_API_KEY, or CI OIDC token")
+}
+
+// newClient creates an API client with the given Bearer token.
+func newClient(token string) (*api.Client, error) {
+	client, err := api.NewClient(resolveAPIURL(), token)
 	if err != nil {
 		return nil, &ExitError{Code: exitcode.UsageError, Err: err}
 	}

@@ -84,7 +84,12 @@ func (ctx *uploadContext) resolveClient() error {
 		return err
 	}
 
-	client, err := newClient()
+	token, err := resolveToken(orgSlug)
+	if err != nil {
+		return &ExitError{Code: exitcode.UsageError, Err: err}
+	}
+
+	client, err := newClient(token)
 	if err != nil {
 		return err
 	}
