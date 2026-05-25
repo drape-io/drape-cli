@@ -40,13 +40,13 @@ func severityMeetsThreshold(severity, threshold string) bool {
 var uploadScanCmd = &cobra.Command{
 	Use:   "scan <glob>",
 	Short: "Upload security scan results to Drape",
-	Long:  "Upload SARIF or CycloneDX security scan results to Drape for analysis.",
+	Long:  "Upload SARIF, CycloneDX, Grype JSON, or Trivy JSON security scan results to Drape for analysis.",
 	Args:  cobra.MinimumNArgs(1),
 	RunE:  runUploadScan,
 }
 
 func init() {
-	uploadScanCmd.Flags().StringVar(&flagScanFormat, "format", "sarif", "Scan report format: sarif, cyclonedx (default: sarif)")
+	uploadScanCmd.Flags().StringVar(&flagScanFormat, "format", "sarif", "Scan report format: sarif, cyclonedx, grype-json, trivy-json (default: sarif)")
 	uploadScanCmd.Flags().StringVar(&flagScanName, "scan-name", "", "Scan name (e.g. docker image name, tool name)")
 	uploadScanCmd.Flags().StringVar(&flagScanTag, "scan-tag", "", "Scan tag (e.g. image tag, version)")
 	uploadScanCmd.Flags().StringVar(&flagScanType, "scan-type", "", "Scan type: image, dependency (default: auto-detect from format)")
