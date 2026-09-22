@@ -146,8 +146,9 @@ jobs:
           semgrep scan --config auto --error .
 
       - name: Run govulncheck
-        # Informational only — stdlib vulns require Go patch upgrades
-        # which are tracked via dependabot and addressed in regular updates
+        # Informational only — a stdlib vuln needs a Go patch upgrade: a manual
+        # bump of go.mod and .mise.toml that dependabot's gomod updates do not
+        # cover. This step going red is the only signal one is due.
         continue-on-error: true
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest

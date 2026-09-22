@@ -198,7 +198,9 @@ func printScanSummary(filename string, status *api.ScanStatusResponse) {
 		// Not derived from the total: the server excludes suppressed,
 		// negligible and non-actionable findings from this number, so
 		// subtracting it would lump all three together under one label.
-		// This is the count the exit code is decided on.
+		// This is what the server considers blocking, not what the CLI exits
+		// on: that also needs --fail-on-vulnerabilities (off by default) and
+		// a severity at or above --fail-on-severity.
 		output.Info("  Blocking:        %d", *status.UnsuppressedVulnerabilities)
 	}
 	if status.UnsuppressedHighestSeverity != nil {
