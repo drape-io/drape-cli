@@ -4,44 +4,44 @@ import "time"
 
 // ScanStatusResponse is the CLI-facing status for a scan upload.
 type ScanStatusResponse struct {
-	UploadID                      int           `json:"upload_id"`
-	Status                        string        `json:"status"`
-	ScanID                        *int          `json:"scan_id,omitempty"`
-	ScanName                      *string       `json:"scan_name,omitempty"`
-	TotalVulnerabilities          *int          `json:"total_vulnerabilities,omitempty"`
-	HighestSeverity               *string       `json:"highest_severity,omitempty"`
-	UnsuppressedVulnerabilities   *int          `json:"unsuppressed_vulnerabilities,omitempty"`
-	UnsuppressedHighestSeverity   *string       `json:"unsuppressed_highest_severity,omitempty"`
-	ErrorMessage                  *string       `json:"error_message,omitempty"`
-	ScanDiff                      *ScanDiffInfo `json:"scan_diff,omitempty"`
+	UploadID                    int           `json:"upload_id"`
+	Status                      string        `json:"status"`
+	ScanID                      *int          `json:"scan_id,omitempty"`
+	ScanName                    *string       `json:"scan_name,omitempty"`
+	TotalVulnerabilities        *int          `json:"total_vulnerabilities,omitempty"`
+	HighestSeverity             *string       `json:"highest_severity,omitempty"`
+	UnsuppressedVulnerabilities *int          `json:"unsuppressed_vulnerabilities,omitempty"`
+	UnsuppressedHighestSeverity *string       `json:"unsuppressed_highest_severity,omitempty"`
+	ErrorMessage                *string       `json:"error_message,omitempty"`
+	ScanDiff                    *ScanDiffInfo `json:"scan_diff,omitempty"`
 }
 
 // ScanDiffInfo contains the result of comparing PR scan results against the base branch.
 type ScanDiffInfo struct {
-	Passed             bool            `json:"passed"`
-	NewCriticalCount   int             `json:"new_critical_count"`
-	NewHighCount       int             `json:"new_high_count"`
-	NewMediumCount     int             `json:"new_medium_count"`
-	NewLowCount        int             `json:"new_low_count"`
-	SuppressedCVECount int             `json:"suppressed_cves_count"`
+	Passed             bool `json:"passed"`
+	NewCriticalCount   int  `json:"new_critical_count"`
+	NewHighCount       int  `json:"new_high_count"`
+	NewMediumCount     int  `json:"new_medium_count"`
+	NewLowCount        int  `json:"new_low_count"`
+	SuppressedCVECount int  `json:"suppressed_cves_count"`
 	// Won't-fix upstream: reported, never blocking, and excluded from the
 	// severity counts above, so the headline only reconciles with NewCVEs
 	// once this is added back in.
-	NonActionableCount int             `json:"non_actionable_cves_count"`
-	UnchangedCVECount  int             `json:"unchanged_cves_count"`
-	NewCVEs            []ScanCVE       `json:"new_cves"`
-	ResolvedCVEs       []ScanCVE       `json:"resolved_cves"`
-	SLAViolations      []SLAViolation  `json:"sla_violations"`
-	FailureReasons     []string        `json:"failure_reasons"`
+	NonActionableCount int            `json:"non_actionable_cves_count"`
+	UnchangedCVECount  int            `json:"unchanged_cves_count"`
+	NewCVEs            []ScanCVE      `json:"new_cves"`
+	ResolvedCVEs       []ScanCVE      `json:"resolved_cves"`
+	SLAViolations      []SLAViolation `json:"sla_violations"`
+	FailureReasons     []string       `json:"failure_reasons"`
 }
 
 // ScanCVE represents a CVE in diff results.
 type ScanCVE struct {
-	CVEID          string      `json:"cve_id"`
-	Severity       string      `json:"severity"`
-	PackageName    string      `json:"package_name"`
-	PackageVersion string      `json:"package_version"`
-	FixState       string      `json:"fix_state"`
+	CVEID          string       `json:"cve_id"`
+	Severity       string       `json:"severity"`
+	PackageName    string       `json:"package_name"`
+	PackageVersion string       `json:"package_version"`
+	FixState       string       `json:"fix_state"`
 	Suppression    *Suppression `json:"suppression,omitempty"`
 }
 

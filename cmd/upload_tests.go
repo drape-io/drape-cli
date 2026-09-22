@@ -12,11 +12,11 @@ import (
 )
 
 var (
-	flagTestFormat   string
-	flagTestJobName  string
-	flagTestPRNumber int
-	flagTestRunDate  string
-	flagTestGroups   []string
+	flagTestFormat     string
+	flagTestJobName    string
+	flagTestPRNumber   int
+	flagTestRunDate    string
+	flagTestGroups     []string
 	flagTestDrapeRunID string
 )
 

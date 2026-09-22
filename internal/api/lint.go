@@ -16,14 +16,14 @@ type LintStatusResponse struct {
 
 // LintDiffInfo contains the result of comparing PR lint results against the base branch.
 type LintDiffInfo struct {
-	Passed                   bool              `json:"passed"`
-	BaseViolationCount       int               `json:"base_violation_count"`
-	HeadViolationCount       int               `json:"head_violation_count"`
-	NewViolationCount        int               `json:"new_violation_count"`
-	ResolvedViolationCount   int               `json:"resolved_violation_count"`
-	SuppressedViolationCount int               `json:"suppressed_violation_count"`
-	NewViolations            []LintViolation   `json:"new_violations"`
-	FailureReasons           []string          `json:"failure_reasons"`
+	Passed                   bool            `json:"passed"`
+	BaseViolationCount       int             `json:"base_violation_count"`
+	HeadViolationCount       int             `json:"head_violation_count"`
+	NewViolationCount        int             `json:"new_violation_count"`
+	ResolvedViolationCount   int             `json:"resolved_violation_count"`
+	SuppressedViolationCount int             `json:"suppressed_violation_count"`
+	NewViolations            []LintViolation `json:"new_violations"`
+	FailureReasons           []string        `json:"failure_reasons"`
 }
 
 // LintViolation represents a single lint violation in diff results.

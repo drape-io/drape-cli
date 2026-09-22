@@ -11,11 +11,11 @@ func TestMapCoverageResult(t *testing.T) {
 		"coverage_rate": "85.50",
 		"file_count":    float64(10),
 		"coverage_diff": map[string]any{
-			"passed":            true,
+			"passed":             true,
 			"head_coverage_rate": "85.50",
-			"new_lines_total":   float64(20),
-			"new_lines_covered": float64(18),
-			"failure_reasons":   []any{},
+			"new_lines_total":    float64(20),
+			"new_lines_covered":  float64(18),
+			"failure_reasons":    []any{},
 		},
 	}
 

@@ -7,15 +7,15 @@ import (
 // TestStatusResponse is the CLI-facing status for a test upload.
 // Extracted from the unified UploadStatusResponse result dict.
 type TestStatusResponse struct {
-	UploadID                  int      `json:"upload_id"`
-	Status                    string   `json:"status"`
-	TestsIngested             *int     `json:"tests_ingested,omitempty"`
+	UploadID                 int      `json:"upload_id"`
+	Status                   string   `json:"status"`
+	TestsIngested            *int     `json:"tests_ingested,omitempty"`
 	SuppressedCount          *int     `json:"suppressed_count,omitempty"`
 	SuppressedTests          []string `json:"suppressed_tests,omitempty"`
 	FailedCount              *int     `json:"failed_count,omitempty"`
 	UnsuppressedFailureCount *int     `json:"unsuppressed_failure_count,omitempty"`
 	NewTestsDetected         []string `json:"new_tests_detected,omitempty"`
-	ErrorMessage              *string  `json:"error_message,omitempty"`
+	ErrorMessage             *string  `json:"error_message,omitempty"`
 }
 
 // PollTestStatus polls the upload status until it completes or times out.
