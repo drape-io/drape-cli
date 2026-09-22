@@ -153,7 +153,9 @@ func mapScanCVE(m map[string]any) ScanCVE {
 	}
 	if sup, ok := m["suppression"].(map[string]any); ok {
 		cve.Suppression = &Suppression{
-			Type:          getStringVal(sup, "suppression_type"),
+			// The server sends "type"; reading "suppression_type" meant the
+			// reason rendered blank on every suppressed CVE.
+			Type:          getStringVal(sup, "type"),
 			Justification: getStringVal(sup, "justification"),
 		}
 	}

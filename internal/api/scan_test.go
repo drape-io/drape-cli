@@ -39,6 +39,29 @@ func TestMapScanDiffReconcilesNonActionable(t *testing.T) {
 	}
 }
 
+// The suppression reason comes back under "type". Reading the wrong key
+// rendered every suppressed CVE with a blank reason.
+func TestMapScanCVEReadsTheSuppressionReason(t *testing.T) {
+	cve := mapScanCVE(map[string]any{
+		"cve_id":   "CVE-1",
+		"severity": "high",
+		"suppression": map[string]any{
+			"type":          "NOT_AFFECTED",
+			"justification": "vendored copy is not reachable",
+		},
+	})
+
+	if cve.Suppression == nil {
+		t.Fatal("expected a suppression, got none")
+	}
+	if cve.Suppression.Type != "NOT_AFFECTED" {
+		t.Errorf("expected type=NOT_AFFECTED, got %q", cve.Suppression.Type)
+	}
+	if cve.Suppression.Justification != "vendored copy is not reachable" {
+		t.Errorf("unexpected justification %q", cve.Suppression.Justification)
+	}
+}
+
 // An older server omits the key entirely; the count must read as zero rather
 // than breaking the mapping.
 func TestMapScanDiffWithoutNonActionableKey(t *testing.T) {
