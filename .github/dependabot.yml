@@ -7,6 +7,10 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
+    # Wait out the window in which a freshly published version is most
+    # likely to be malicious or broken before proposing it.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "ci"
       include: "scope"
@@ -22,6 +26,10 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
+    # Wait out the window in which a freshly published version is most
+    # likely to be malicious or broken before proposing it.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "deps"
       include: "scope"
