@@ -272,9 +272,12 @@ func printScanDiff(diff *api.ScanDiffInfo, prNumber int) error {
 
 	if diff.Passed {
 		output.Info("  Result:    PASSED")
-		if diff.SuppressedCVECount > 0 && totalNew == 0 {
+		// Every non-blocking bucket, not just suppressions: won't-fix CVEs
+		// are listed above too, so naming only the suppressed count
+		// undercounts the list and relabels won't-fix findings as suppressed.
+		if nonBlocking := diff.SuppressedCVECount + diff.NonActionableCount; nonBlocking > 0 && totalNew == 0 {
 			output.Info("")
-			output.Info("All %d new CVE(s) are suppressed — passing CI", diff.SuppressedCVECount)
+			output.Info("All %d new CVE(s) are suppressed or won't-fix — passing CI", nonBlocking)
 		}
 	} else {
 		output.Info("  Result:    FAILED")
