@@ -100,7 +100,12 @@ jobs:
         env:
           GRYPE: ${{ steps.grype-image.outputs.cmd }}
         run: |
-          "$GRYPE" drape-cli:ci --fail-on high
+          # Pin the config outside the workspace. Grype auto-loads .grype.yaml
+          # from the working directory, which on a fork PR is the fork's own
+          # code — an `ignore:` rule there drops every match before --fail-on
+          # is evaluated, and the gate reports green.
+          echo '{}' > "${RUNNER_TEMP}/grype.yaml"
+          "$GRYPE" drape-cli:ci --fail-on high --config "${RUNNER_TEMP}/grype.yaml"
 
   security:
     name: Security Scanning
@@ -128,7 +133,12 @@ jobs:
         env:
           GRYPE: ${{ steps.grype-modules.outputs.cmd }}
         run: |
-          "$GRYPE" dir:. --fail-on high
+          # Pin the config outside the workspace. Grype auto-loads .grype.yaml
+          # from the working directory, which on a fork PR is the fork's own
+          # code — an `ignore:` rule there drops every match before --fail-on
+          # is evaluated, and the gate reports green.
+          echo '{}' > "${RUNNER_TEMP}/grype.yaml"
+          "$GRYPE" dir:. --fail-on high --config "${RUNNER_TEMP}/grype.yaml"
 
       - name: Run Semgrep
         run: |
