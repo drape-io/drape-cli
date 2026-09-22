@@ -90,10 +90,17 @@ jobs:
         run: |
           docker build -t drape-cli:ci .
 
+      - name: Install Grype
+        id: grype-image
+        uses: anchore/scan-action/download-grype@27805bf3b4e84b4a5c980df22ed233c00390a439  # v7.4.2
+
       - name: Scan Docker image with Grype
+        # Via env, not inline ${{ }}: an expression in `run:` is substituted
+        # textually into the script before the shell sees it.
+        env:
+          GRYPE: ${{ steps.grype-image.outputs.cmd }}
         run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
-          grype drape-cli:ci --fail-on high
+          "$GRYPE" drape-cli:ci --fail-on high
 
   security:
     name: Security Scanning
@@ -113,10 +120,15 @@ jobs:
           go install github.com/securego/gosec/v2/cmd/gosec@v2.22.4
           gosec ./...
 
+      - name: Install Grype
+        id: grype-modules
+        uses: anchore/scan-action/download-grype@27805bf3b4e84b4a5c980df22ed233c00390a439  # v7.4.2
+
       - name: Run Grype on Go modules
+        env:
+          GRYPE: ${{ steps.grype-modules.outputs.cmd }}
         run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
-          grype dir:. --fail-on high
+          "$GRYPE" dir:. --fail-on high
 
       - name: Run Semgrep
         run: |

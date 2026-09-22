@@ -195,14 +195,11 @@ func printScanSummary(filename string, status *api.ScanStatusResponse) {
 		output.Info("  Vulnerabilities: %d", *status.TotalVulnerabilities)
 	}
 	if status.UnsuppressedVulnerabilities != nil {
-		suppressed := 0
-		if status.TotalVulnerabilities != nil {
-			suppressed = *status.TotalVulnerabilities - *status.UnsuppressedVulnerabilities
-		}
-		if suppressed > 0 {
-			output.Info("  Suppressed:      %d", suppressed)
-			output.Info("  Unsuppressed:    %d", *status.UnsuppressedVulnerabilities)
-		}
+		// Not derived from the total: the server excludes suppressed,
+		// negligible and non-actionable findings from this number, so
+		// subtracting it would lump all three together under one label.
+		// This is the count the exit code is decided on.
+		output.Info("  Blocking:        %d", *status.UnsuppressedVulnerabilities)
 	}
 	if status.UnsuppressedHighestSeverity != nil {
 		output.Info("  Highest:         %s", *status.UnsuppressedHighestSeverity)
@@ -243,6 +240,9 @@ func printScanDiff(diff *api.ScanDiffInfo, prNumber int) error {
 		totalNew, diff.NewCriticalCount, diff.NewHighCount, diff.NewMediumCount, diff.NewLowCount)
 	if diff.SuppressedCVECount > 0 {
 		output.Info("  Suppressed:  %d", diff.SuppressedCVECount)
+	}
+	if diff.NonActionableCount > 0 {
+		output.Info("  Won't fix:   %d  (reported, not blocking)", diff.NonActionableCount)
 	}
 	if len(diff.ResolvedCVEs) > 0 {
 		output.Info("  Resolved:    %d", len(diff.ResolvedCVEs))
