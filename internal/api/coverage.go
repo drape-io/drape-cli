@@ -14,16 +14,16 @@ type RegressedFileInfo struct {
 
 // CoverageDiffInfo contains the result of comparing PR coverage against the base branch.
 type CoverageDiffInfo struct {
-	Passed              bool               `json:"passed"`
-	BaseCoverageRate    *string            `json:"base_coverage_rate,omitempty"`
-	HeadCoverageRate    string             `json:"head_coverage_rate"`
-	CoverageDelta       *string            `json:"coverage_delta,omitempty"`
-	NewLinesTotal       int                `json:"new_lines_total"`
-	NewLinesCovered     int                `json:"new_lines_covered"`
-	NewCodeCoverageRate *string            `json:"new_code_coverage_rate,omitempty"`
-	RegressedLinesCount int                `json:"regressed_lines_count"`
+	Passed              bool                `json:"passed"`
+	BaseCoverageRate    *string             `json:"base_coverage_rate,omitempty"`
+	HeadCoverageRate    string              `json:"head_coverage_rate"`
+	CoverageDelta       *string             `json:"coverage_delta,omitempty"`
+	NewLinesTotal       int                 `json:"new_lines_total"`
+	NewLinesCovered     int                 `json:"new_lines_covered"`
+	NewCodeCoverageRate *string             `json:"new_code_coverage_rate,omitempty"`
+	RegressedLinesCount int                 `json:"regressed_lines_count"`
 	RegressedFiles      []RegressedFileInfo `json:"regressed_files,omitempty"`
-	FailureReasons      []string           `json:"failure_reasons"`
+	FailureReasons      []string            `json:"failure_reasons"`
 }
 
 // CoverageResult contains the coverage-specific fields shared between

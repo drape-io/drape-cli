@@ -21,3 +21,10 @@ linters:
   exclusions:
     paths:
       - internal/junit/testdata
+
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    paths:
+      - internal/junit/testdata

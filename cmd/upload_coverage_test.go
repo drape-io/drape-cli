@@ -87,4 +87,3 @@ func TestRenderBatchResult_AbsentPartialDoesNotWarn(t *testing.T) {
 		t.Errorf("absent partial field should not print warning; got:\n%s", stderr.String())
 	}
 }
-

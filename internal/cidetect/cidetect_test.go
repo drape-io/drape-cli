@@ -62,12 +62,12 @@ func TestDetect_GitHubActions_PR(t *testing.T) {
 
 func TestDetect_GitHubActions_PR_HeadSHA(t *testing.T) {
 	env := envFromMap(map[string]string{
-		"GITHUB_ACTIONS":                       "true",
-		"GITHUB_SHA":                           "merge-commit-sha",
-		"GITHUB_HEAD_REF":                      "feature-branch",
-		"GITHUB_BASE_REF":                      "main",
-		"GITHUB_EVENT_PULL_REQUEST_HEAD_SHA":    "actual-head-sha",
-		"GITHUB_REPOSITORY":                    "drape-io/webapp",
+		"GITHUB_ACTIONS":                     "true",
+		"GITHUB_SHA":                         "merge-commit-sha",
+		"GITHUB_HEAD_REF":                    "feature-branch",
+		"GITHUB_BASE_REF":                    "main",
+		"GITHUB_EVENT_PULL_REQUEST_HEAD_SHA": "actual-head-sha",
+		"GITHUB_REPOSITORY":                  "drape-io/webapp",
 	})
 
 	info := Detect(env)
@@ -79,14 +79,14 @@ func TestDetect_GitHubActions_PR_HeadSHA(t *testing.T) {
 
 func TestDetect_GitLabCI(t *testing.T) {
 	env := envFromMap(map[string]string{
-		"GITLAB_CI":         "true",
-		"CI_COMMIT_SHA":     "def456",
-		"CI_COMMIT_BRANCH":  "develop",
-		"CI_PROJECT_PATH":   "drape/webapp",
-		"CI_PROJECT_URL":    "https://gitlab.com/drape/webapp",
-		"CI_JOB_URL":        "https://gitlab.com/drape/webapp/-/jobs/789",
-		"CI_JOB_ID":         "789",
-		"CI_PIPELINE_IID":   "10",
+		"GITLAB_CI":        "true",
+		"CI_COMMIT_SHA":    "def456",
+		"CI_COMMIT_BRANCH": "develop",
+		"CI_PROJECT_PATH":  "drape/webapp",
+		"CI_PROJECT_URL":   "https://gitlab.com/drape/webapp",
+		"CI_JOB_URL":       "https://gitlab.com/drape/webapp/-/jobs/789",
+		"CI_JOB_ID":        "789",
+		"CI_PIPELINE_IID":  "10",
 	})
 
 	info := Detect(env)
@@ -101,12 +101,12 @@ func TestDetect_GitLabCI(t *testing.T) {
 
 func TestDetect_GitLab_MR_SHA_Fallback(t *testing.T) {
 	env := envFromMap(map[string]string{
-		"GITLAB_CI":                            "true",
-		"CI_COMMIT_SHA":                        "merge-commit-sha",
-		"CI_MERGE_REQUEST_SOURCE_BRANCH_SHA":   "actual-head-sha",
-		"CI_MERGE_REQUEST_IID":                 "99",
-		"CI_MERGE_REQUEST_TARGET_BRANCH_NAME":  "main",
-		"CI_MERGE_REQUEST_SOURCE_BRANCH_NAME":  "feature-x",
+		"GITLAB_CI":                           "true",
+		"CI_COMMIT_SHA":                       "merge-commit-sha",
+		"CI_MERGE_REQUEST_SOURCE_BRANCH_SHA":  "actual-head-sha",
+		"CI_MERGE_REQUEST_IID":                "99",
+		"CI_MERGE_REQUEST_TARGET_BRANCH_NAME": "main",
+		"CI_MERGE_REQUEST_SOURCE_BRANCH_NAME": "feature-x",
 	})
 
 	info := Detect(env)
@@ -124,8 +124,8 @@ func TestDetect_GitLab_MR_SHA_Fallback(t *testing.T) {
 
 func TestDetect_CircleCI(t *testing.T) {
 	env := envFromMap(map[string]string{
-		"CIRCLECI":                 "true",
-		"CIRCLE_SHA1":              "ccc111",
+		"CIRCLECI":                "true",
+		"CIRCLE_SHA1":             "ccc111",
 		"CIRCLE_BRANCH":           "main",
 		"CIRCLE_BUILD_URL":        "https://circleci.com/gh/drape/webapp/42",
 		"CIRCLE_BUILD_NUM":        "42",
@@ -181,11 +181,11 @@ func TestDetect_Jenkins(t *testing.T) {
 
 func TestDetect_Azure(t *testing.T) {
 	env := envFromMap(map[string]string{
-		"TF_BUILD":             "True",
-		"BUILD_SOURCEVERSION":  "aaa444",
-		"BUILD_SOURCEBRANCH":   "refs/heads/main",
+		"TF_BUILD":              "True",
+		"BUILD_SOURCEVERSION":   "aaa444",
+		"BUILD_SOURCEBRANCH":    "refs/heads/main",
 		"BUILD_REPOSITORY_NAME": "drape/webapp",
-		"BUILD_BUILDNUMBER":    "20260312.1",
+		"BUILD_BUILDNUMBER":     "20260312.1",
 	})
 
 	info := Detect(env)
@@ -218,12 +218,12 @@ func TestDetect_Travis(t *testing.T) {
 
 func TestDetect_Travis_PR(t *testing.T) {
 	env := envFromMap(map[string]string{
-		"TRAVIS":                      "true",
-		"TRAVIS_COMMIT":               "ttt555",
-		"TRAVIS_BRANCH":               "main",
-		"TRAVIS_PULL_REQUEST":         "7",
-		"TRAVIS_PULL_REQUEST_BRANCH":  "feature-x",
-		"TRAVIS_REPO_SLUG":            "drape/webapp",
+		"TRAVIS":                     "true",
+		"TRAVIS_COMMIT":              "ttt555",
+		"TRAVIS_BRANCH":              "main",
+		"TRAVIS_PULL_REQUEST":        "7",
+		"TRAVIS_PULL_REQUEST_BRANCH": "feature-x",
+		"TRAVIS_REPO_SLUG":           "drape/webapp",
 	})
 
 	info := Detect(env)
