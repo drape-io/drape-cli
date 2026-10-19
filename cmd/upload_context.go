@@ -130,10 +130,11 @@ func (ctx *uploadContext) uploadFile(uploadType, filename string, data []byte, m
 	return initResp.UploadID, nil
 }
 
-// drapeURL constructs a dashboard URL for the given upload ID.
-func (ctx *uploadContext) drapeURL(uploadID int) string {
-	baseURL := ctx.client.BaseURL
-	return fmt.Sprintf("%s/orgs/%s/repos/%s/uploads/%d", baseURL, ctx.orgSlug, ctx.repoName, uploadID)
+// drapeURL is the repository's uploads page. It's the link until the server
+// returns the upload's own report_url, and the only link for servers that
+// don't send one.
+func (ctx *uploadContext) drapeURL() string {
+	return fmt.Sprintf("%s/orgs/%s/repositories/%s/uploads/", ctx.client.BaseURL, ctx.orgSlug, ctx.repoName)
 }
 
 // uploadFiles reads, uploads, and returns results for each file.
@@ -163,7 +164,7 @@ func (ctx *uploadContext) uploadFiles(uploadType string, files []string, metadat
 		}
 
 		output.Verbose("  %s: upload initiated (ID: %d)", filename, uploadID)
-		result.Uploads = append(result.Uploads, UploadEntry{Filename: filename, UploadID: uploadID, DrapeURL: ctx.drapeURL(uploadID)})
+		result.Uploads = append(result.Uploads, UploadEntry{Filename: filename, UploadID: uploadID, DrapeURL: ctx.drapeURL()})
 	}
 
 	result.FilesUploaded = len(result.Uploads)

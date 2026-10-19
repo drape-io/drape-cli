@@ -13,6 +13,7 @@ type ScanStatusResponse struct {
 	UnsuppressedVulnerabilities *int          `json:"unsuppressed_vulnerabilities,omitempty"`
 	UnsuppressedHighestSeverity *string       `json:"unsuppressed_highest_severity,omitempty"`
 	ErrorMessage                *string       `json:"error_message,omitempty"`
+	ReportURL                   string        `json:"report_url,omitempty"`
 	ScanDiff                    *ScanDiffInfo `json:"scan_diff,omitempty"`
 }
 
@@ -28,12 +29,15 @@ type ScanDiffInfo struct {
 	// Won't-fix upstream: reported, never blocking, and excluded from the
 	// severity counts above, so the headline only reconciles with NewCVEs
 	// once this is added back in.
-	NonActionableCount int            `json:"non_actionable_cves_count"`
-	UnchangedCVECount  int            `json:"unchanged_cves_count"`
-	NewCVEs            []ScanCVE      `json:"new_cves"`
-	ResolvedCVEs       []ScanCVE      `json:"resolved_cves"`
-	SLAViolations      []SLAViolation `json:"sla_violations"`
-	FailureReasons     []string       `json:"failure_reasons"`
+	NonActionableCount int       `json:"non_actionable_cves_count"`
+	UnchangedCVECount  int       `json:"unchanged_cves_count"`
+	NewCVEs            []ScanCVE `json:"new_cves"`
+	ResolvedCVEs       []ScanCVE `json:"resolved_cves"`
+	// Unchanged CVEs that still need action (unsuppressed, not won't-fix).
+	// They don't block the run; they're listed so they stay visible.
+	ExistingActionableCVEs []ScanCVE      `json:"existing_actionable_cves,omitempty"`
+	SLAViolations          []SLAViolation `json:"sla_violations"`
+	FailureReasons         []string       `json:"failure_reasons"`
 }
 
 // ScanCVE represents a CVE in diff results.
@@ -82,6 +86,7 @@ func mapScanStatus(raw *UploadStatusResponse) *ScanStatusResponse {
 		UploadID:     raw.UploadID,
 		Status:       raw.Status,
 		ErrorMessage: raw.ErrorMessage,
+		ReportURL:    raw.ReportURL,
 	}
 
 	if raw.Result == nil {
@@ -119,6 +124,13 @@ func mapScanDiff(m map[string]any) *ScanDiffInfo {
 		for _, c := range cves {
 			if cm, ok := c.(map[string]any); ok {
 				diff.NewCVEs = append(diff.NewCVEs, mapScanCVE(cm))
+			}
+		}
+	}
+	if cves, ok := m["existing_actionable_cves"].([]any); ok {
+		for _, c := range cves {
+			if cm, ok := c.(map[string]any); ok {
+				diff.ExistingActionableCVEs = append(diff.ExistingActionableCVEs, mapScanCVE(cm))
 			}
 		}
 	}

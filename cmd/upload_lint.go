@@ -68,7 +68,7 @@ func runUploadLint(cmd *cobra.Command, args []string) error {
 	result := UploadResult{
 		FilesMatched:  1,
 		FilesUploaded: 1,
-		Uploads:       []UploadEntry{{Filename: filename, UploadID: uploadID, DrapeURL: ctx.drapeURL(uploadID)}},
+		Uploads:       []UploadEntry{{Filename: filename, UploadID: uploadID, DrapeURL: ctx.drapeURL()}},
 	}
 
 	if !flagUploadWait {
@@ -86,6 +86,9 @@ func runUploadLint(cmd *cobra.Command, args []string) error {
 	}
 
 	result.Uploads[0].Result = status
+	if status.ReportURL != "" {
+		result.Uploads[0].DrapeURL = status.ReportURL
+	}
 	setResult(result)
 
 	output.Info("")

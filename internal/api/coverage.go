@@ -45,6 +45,7 @@ type CoverageStatusResponse struct {
 	UploadID     int     `json:"upload_id"`
 	Status       string  `json:"status"`
 	ErrorMessage *string `json:"error_message,omitempty"`
+	ReportURL    string  `json:"report_url,omitempty"`
 	CoverageResult
 }
 
@@ -71,6 +72,7 @@ func mapCoverageStatus(raw *UploadStatusResponse) *CoverageStatusResponse {
 		UploadID:     raw.UploadID,
 		Status:       raw.Status,
 		ErrorMessage: raw.ErrorMessage,
+		ReportURL:    raw.ReportURL,
 	}
 	if raw.Result != nil {
 		result.CoverageResult = mapCoverageResult(raw.Result)
