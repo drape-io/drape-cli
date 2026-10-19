@@ -50,7 +50,7 @@ func init() {
 	uploadScanCmd.Flags().StringVar(&flagScanName, "scan-name", "", "Scan name (e.g. docker image name, tool name)")
 	uploadScanCmd.Flags().StringVar(&flagScanTag, "scan-tag", "", "Scan tag (e.g. image tag, version)")
 	uploadScanCmd.Flags().StringVar(&flagScanType, "scan-type", "", "Scan type: image, dependency (default: auto-detect from format)")
-	uploadScanCmd.Flags().BoolVar(&flagScanFailOnVulns, "fail-on-vulnerabilities", false, "Exit non-zero if unsuppressed vulnerabilities are found")
+	uploadScanCmd.Flags().BoolVar(&flagScanFailOnVulns, "fail-on-vulnerabilities", false, "Exit non-zero if new unsuppressed vulnerabilities are found (every finding counts as new without a PR baseline)")
 	uploadScanCmd.Flags().StringVar(&flagScanFailOnSeverity, "fail-on-severity", "medium", "Minimum severity to fail on: critical, high, medium, low, any (default: medium)")
 
 	uploadCmd.AddCommand(uploadScanCmd)
@@ -149,7 +149,7 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 		printScanSummary(u.Filename, status)
 
 		if flagScanFailOnVulns {
-			hasUnsuppressedVulns = hasUnsuppressedVulns || checkScanVulns(status)
+			hasUnsuppressedVulns = hasUnsuppressedVulns || scanFailsOnVulns(status, flagScanFailOnSeverity)
 		}
 
 		if status.ScanDiff != nil {
@@ -179,7 +179,7 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 	}
 
 	if flagScanFailOnVulns && hasUnsuppressedVulns {
-		return &ExitError{Code: exitcode.ScanFailure, Err: fmt.Errorf("unsuppressed vulnerabilities found")}
+		return &ExitError{Code: exitcode.ScanFailure, Err: fmt.Errorf("new unsuppressed vulnerabilities at or above %s found", flagScanFailOnSeverity)}
 	}
 
 	return nil
@@ -210,7 +210,34 @@ func printScanSummary(filename string, status *api.ScanStatusResponse) {
 	}
 }
 
-func checkScanVulns(status *api.ScanStatusResponse) bool {
+// scanFailsOnVulns reports whether --fail-on-vulnerabilities should fail the
+// run. With a diff it counts only the CVEs the diff calls new, so a PR that
+// adds nothing passes even when the image still carries older findings.
+// Those are enforced through the server's SLA policy instead. The diff's
+// counts already exclude suppressed and won't-fix CVEs. Without a PR baseline
+// the server treats every CVE as new, so a push to the default branch still
+// gates on the whole scan.
+func scanFailsOnVulns(status *api.ScanStatusResponse, threshold string) bool {
+	if d := status.ScanDiff; d != nil {
+		counts := map[string]int{
+			"critical": d.NewCriticalCount,
+			"high":     d.NewHighCount,
+			"medium":   d.NewMediumCount,
+			"low":      d.NewLowCount,
+			"unknown":  d.NewUnknownCount,
+		}
+		for severity, n := range counts {
+			if n > 0 && severityMeetsThreshold(severity, threshold) {
+				return true
+			}
+		}
+		return false
+	}
+	return wholeScanFailsOnVulns(status, threshold)
+}
+
+// wholeScanFailsOnVulns is the fallback for a server that sends no diff.
+func wholeScanFailsOnVulns(status *api.ScanStatusResponse, threshold string) bool {
 	vulnCount := 0
 	if status.UnsuppressedVulnerabilities != nil {
 		vulnCount = *status.UnsuppressedVulnerabilities
@@ -226,7 +253,7 @@ func checkScanVulns(status *api.ScanStatusResponse) bool {
 	} else if status.HighestSeverity != nil {
 		highestSev = *status.HighestSeverity
 	}
-	return severityMeetsThreshold(highestSev, flagScanFailOnSeverity)
+	return severityMeetsThreshold(highestSev, threshold)
 }
 
 func printScanDiff(diff *api.ScanDiffInfo, prNumber int) error {

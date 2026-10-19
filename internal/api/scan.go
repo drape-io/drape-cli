@@ -23,6 +23,7 @@ type ScanDiffInfo struct {
 	NewHighCount       int  `json:"new_high_count"`
 	NewMediumCount     int  `json:"new_medium_count"`
 	NewLowCount        int  `json:"new_low_count"`
+	NewUnknownCount    int  `json:"new_unknown_count"`
 	SuppressedCVECount int  `json:"suppressed_cves_count"`
 	// Won't-fix upstream: reported, never blocking, and excluded from the
 	// severity counts above, so the headline only reconciles with NewCVEs
@@ -107,6 +108,7 @@ func mapScanDiff(m map[string]any) *ScanDiffInfo {
 		NewHighCount:       getIntVal(m, "new_high_count"),
 		NewMediumCount:     getIntVal(m, "new_medium_count"),
 		NewLowCount:        getIntVal(m, "new_low_count"),
+		NewUnknownCount:    getIntVal(m, "new_unknown_count"),
 		SuppressedCVECount: getIntVal(m, "suppressed_cves_count"),
 		NonActionableCount: getIntVal(m, "non_actionable_cves_count"),
 		UnchangedCVECount:  getIntVal(m, "unchanged_cves_count"),
