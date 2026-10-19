@@ -77,3 +77,32 @@ func TestMapScanDiffWithoutNonActionableKey(t *testing.T) {
 		t.Errorf("expected new_high_count=1, got %d", diff.NewHighCount)
 	}
 }
+
+// The server lists unchanged CVEs that still need action so the PR comment
+// can name them; dropping the field would hide them again.
+func TestMapScanStatusReadsReportURLAndExistingActionableCVEs(t *testing.T) {
+	raw := &UploadStatusResponse{
+		UploadID:  1,
+		Status:    "completed",
+		ReportURL: "https://drape.example/orgs/o/repositories/o/r/security/7/",
+		Result: map[string]any{
+			"scan_id": float64(7),
+			"scan_diff": map[string]any{
+				"passed": true,
+				"existing_actionable_cves": []any{
+					map[string]any{"cve_id": "CVE-1", "severity": "high", "package_name": "zlib1g", "fix_state": "not-fixed"},
+				},
+			},
+		},
+	}
+
+	status := mapScanStatus(raw)
+
+	if status.ReportURL != raw.ReportURL {
+		t.Errorf("ReportURL = %q, want %q", status.ReportURL, raw.ReportURL)
+	}
+	got := status.ScanDiff.ExistingActionableCVEs
+	if len(got) != 1 || got[0].CVEID != "CVE-1" || got[0].FixState != "not-fixed" {
+		t.Errorf("ExistingActionableCVEs = %+v, want CVE-1 (not-fixed)", got)
+	}
+}

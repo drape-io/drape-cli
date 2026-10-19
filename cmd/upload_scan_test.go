@@ -146,3 +146,44 @@ func TestScanFailsOnVulnsFallsBackToWholeScanWithoutDiff(t *testing.T) {
 		t.Error("scanFailsOnVulns() = false, want true for a high finding with no diff")
 	}
 }
+
+// Existing CVEs that still need action don't block the run, but the output
+// must name them rather than leave only a count.
+func TestPrintScanDiffListsExistingActionableCVEs(t *testing.T) {
+	var buf bytes.Buffer
+	output.Stdout = &buf
+	defer output.Reset()
+
+	diff := &api.ScanDiffInfo{
+		Passed:            true,
+		UnchangedCVECount: 55,
+		ExistingActionableCVEs: []api.ScanCVE{
+			{CVEID: "CVE-2026-0001", Severity: "high", PackageName: "zlib1g", PackageVersion: "1.3", FixState: "not-fixed"},
+		},
+	}
+	if err := printScanDiff(diff, 0); err != nil {
+		t.Fatalf("printScanDiff() error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "Need action: 1") {
+		t.Errorf("missing existing-needs-action count\nGot:\n%s", got)
+	}
+	if !strings.Contains(got, "CVE-2026-0001 [high] zlib1g@1.3 (not-fixed)") {
+		t.Errorf("missing existing CVE line\nGot:\n%s", got)
+	}
+}
+
+// Until the server returns a report_url, link to a page the webapp serves.
+// The old fallback used /repos/ and 404'd.
+func TestDrapeURLFallbackUsesTheRepositoriesRoute(t *testing.T) {
+	ctx := &uploadContext{
+		client:   &api.Client{BaseURL: "https://drape.example"},
+		orgSlug:  "acme",
+		repoName: "acme/app",
+	}
+	want := "https://drape.example/orgs/acme/repositories/acme/app/uploads/"
+	if got := ctx.drapeURL(); got != want {
+		t.Errorf("drapeURL() = %q, want %q", got, want)
+	}
+}

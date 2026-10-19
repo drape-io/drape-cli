@@ -11,6 +11,7 @@ type LintStatusResponse struct {
 	ErrorCount      *int          `json:"error_count,omitempty"`
 	WarningCount    *int          `json:"warning_count,omitempty"`
 	ErrorMessage    *string       `json:"error_message,omitempty"`
+	ReportURL       string        `json:"report_url,omitempty"`
 	LintDiff        *LintDiffInfo `json:"lint_diff,omitempty"`
 }
 
@@ -57,6 +58,7 @@ func mapLintStatus(raw *UploadStatusResponse) *LintStatusResponse {
 		UploadID:     raw.UploadID,
 		Status:       raw.Status,
 		ErrorMessage: raw.ErrorMessage,
+		ReportURL:    raw.ReportURL,
 	}
 
 	if raw.Result == nil {

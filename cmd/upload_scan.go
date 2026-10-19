@@ -145,6 +145,9 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 		}
 
 		result.Uploads[i].Result = status
+		if status.ReportURL != "" {
+			result.Uploads[i].DrapeURL = status.ReportURL
+		}
 
 		printScanSummary(u.Filename, status)
 
@@ -277,6 +280,9 @@ func printScanDiff(diff *api.ScanDiffInfo, prNumber int) error {
 		output.Info("  Resolved:    %d", len(diff.ResolvedCVEs))
 	}
 	output.Info("  Unchanged:   %d", diff.UnchangedCVECount)
+	if n := len(diff.ExistingActionableCVEs); n > 0 {
+		output.Info("  Need action: %d  (existing, not blocking)", n)
+	}
 
 	if len(diff.NewCVEs) > 0 {
 		output.Info("")
@@ -288,6 +294,15 @@ func printScanDiff(diff *api.ScanDiffInfo, prNumber int) error {
 			}
 			output.Info("    %s [%s] %s@%s (%s)%s",
 				cve.CVEID, cve.Severity, cve.PackageName, cve.PackageVersion, cve.FixState, suppressed)
+		}
+	}
+
+	if len(diff.ExistingActionableCVEs) > 0 {
+		output.Info("")
+		output.Info("  Existing CVEs that still need action:")
+		for _, cve := range diff.ExistingActionableCVEs {
+			output.Info("    %s [%s] %s@%s (%s)",
+				cve.CVEID, cve.Severity, cve.PackageName, cve.PackageVersion, cve.FixState)
 		}
 	}
 

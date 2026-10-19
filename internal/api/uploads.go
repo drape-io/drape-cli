@@ -35,6 +35,8 @@ type UploadStatusResponse struct {
 	Status       string         `json:"status"`
 	Result       map[string]any `json:"result"`
 	ErrorMessage *string        `json:"error_message"`
+	// Dashboard page for this upload. Older servers don't send it.
+	ReportURL string `json:"report_url"`
 }
 
 // InitiateUpload starts an upload via the unified upload API.
