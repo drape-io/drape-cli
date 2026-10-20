@@ -259,6 +259,49 @@ func wholeScanFailsOnVulns(status *api.ScanStatusResponse, threshold string) boo
 	return severityMeetsThreshold(highestSev, threshold)
 }
 
+type diffCounts struct {
+	critical, high, medium, low int
+	suppressed, noFix, existing int
+	resolved                    int
+}
+
+func uniqueCVEs(cves []api.ScanCVE) int {
+	ids := make(map[string]struct{}, len(cves))
+	for _, c := range cves {
+		ids[c.CVEID] = struct{}{}
+	}
+	return len(ids)
+}
+
+// summaryCounts picks the diff's per-CVE counts when the server sends them,
+// so the summary matches the scan page, and falls back to the per-package
+// counts otherwise. The gate keeps reading the per-package counts; for any
+// threshold, both units agree on whether something new meets it.
+func summaryCounts(diff *api.ScanDiffInfo) diffCounts {
+	if cc := diff.CVECounts; cc != nil {
+		return diffCounts{
+			critical:   cc.New["critical"],
+			high:       cc.New["high"],
+			medium:     cc.New["medium"],
+			low:        cc.New["low"],
+			suppressed: cc.Suppressed,
+			noFix:      cc.NoFix,
+			existing:   cc.Existing,
+			resolved:   uniqueCVEs(diff.ResolvedCVEs),
+		}
+	}
+	return diffCounts{
+		critical:   diff.NewCriticalCount,
+		high:       diff.NewHighCount,
+		medium:     diff.NewMediumCount,
+		low:        diff.NewLowCount,
+		suppressed: diff.SuppressedCVECount,
+		noFix:      diff.NonActionableCount,
+		existing:   len(diff.ExistingActionableCVEs),
+		resolved:   len(diff.ResolvedCVEs),
+	}
+}
+
 func printScanDiff(diff *api.ScanDiffInfo, prNumber int) error {
 	output.Info("")
 	if prNumber > 0 {
@@ -267,21 +310,25 @@ func printScanDiff(diff *api.ScanDiffInfo, prNumber int) error {
 		output.Info("Scan Diff")
 	}
 
-	totalNew := diff.NewCriticalCount + diff.NewHighCount + diff.NewMediumCount + diff.NewLowCount
+	c := summaryCounts(diff)
+	totalNew := c.critical + c.high + c.medium + c.low
 	output.Info("  New CVEs:    %d (critical: %d, high: %d, medium: %d, low: %d)",
-		totalNew, diff.NewCriticalCount, diff.NewHighCount, diff.NewMediumCount, diff.NewLowCount)
-	if diff.SuppressedCVECount > 0 {
-		output.Info("  Suppressed:  %d", diff.SuppressedCVECount)
+		totalNew, c.critical, c.high, c.medium, c.low)
+	if c.suppressed > 0 {
+		output.Info("  Suppressed:  %d", c.suppressed)
 	}
-	if diff.NonActionableCount > 0 {
-		output.Info("  Won't fix:   %d  (reported, not blocking)", diff.NonActionableCount)
+	if c.noFix > 0 {
+		output.Info("  Won't fix:   %d  (reported, not blocking)", c.noFix)
 	}
-	if len(diff.ResolvedCVEs) > 0 {
-		output.Info("  Resolved:    %d", len(diff.ResolvedCVEs))
+	if c.resolved > 0 {
+		output.Info("  Resolved:    %d", c.resolved)
 	}
-	output.Info("  Unchanged:   %d", diff.UnchangedCVECount)
-	if n := len(diff.ExistingActionableCVEs); n > 0 {
-		output.Info("  Need action: %d  (existing, not blocking)", n)
+	// The server only counts unchanged findings per package.
+	if diff.CVECounts == nil {
+		output.Info("  Unchanged:   %d", diff.UnchangedCVECount)
+	}
+	if c.existing > 0 {
+		output.Info("  Need action: %d  (existing, not blocking)", c.existing)
 	}
 
 	if len(diff.NewCVEs) > 0 {
@@ -319,7 +366,7 @@ func printScanDiff(diff *api.ScanDiffInfo, prNumber int) error {
 		// Every non-blocking bucket, not just suppressions: won't-fix CVEs
 		// are listed above too, so naming only the suppressed count
 		// undercounts the list and relabels won't-fix findings as suppressed.
-		if nonBlocking := diff.SuppressedCVECount + diff.NonActionableCount; nonBlocking > 0 && totalNew == 0 {
+		if nonBlocking := c.suppressed + c.noFix; nonBlocking > 0 && totalNew == 0 {
 			output.Info("")
 			output.Info("All %d new CVE(s) are suppressed or won't-fix — passing CI", nonBlocking)
 		}

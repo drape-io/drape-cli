@@ -174,6 +174,46 @@ func TestPrintScanDiffListsExistingActionableCVEs(t *testing.T) {
 	}
 }
 
+// With per-CVE counts from the server, the summary counts each CVE once so it
+// matches the scan page, while the per-package lists still print in full.
+func TestPrintScanDiffPrefersPerCVECounts(t *testing.T) {
+	var buf bytes.Buffer
+	output.Stdout = &buf
+	defer output.Reset()
+
+	diff := &api.ScanDiffInfo{
+		Passed:             false,
+		NewHighCount:       2,
+		NonActionableCount: 4,
+		UnchangedCVECount:  40,
+		CVECounts: &api.CVECounts{
+			New:      map[string]int{"high": 1},
+			Existing: 3,
+			NoFix:    2,
+		},
+		ResolvedCVEs: []api.ScanCVE{
+			{CVEID: "CVE-2026-0009", PackageName: "libssl3"},
+			{CVEID: "CVE-2026-0009", PackageName: "openssl"},
+		},
+	}
+	_ = printScanDiff(diff, 0)
+
+	got := buf.String()
+	for _, want := range []string{
+		"New CVEs:    1 (critical: 0, high: 1, medium: 0, low: 0)",
+		"Won't fix:   2",
+		"Need action: 3",
+		"Resolved:    1",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q\nGot:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "Unchanged") {
+		t.Errorf("per-package unchanged count printed next to per-CVE counts\nGot:\n%s", got)
+	}
+}
+
 // Until the server returns a report_url, link to a page the webapp serves.
 // The old fallback used /repos/ and 404'd.
 func TestDrapeURLFallbackUsesTheRepositoriesRoute(t *testing.T) {
