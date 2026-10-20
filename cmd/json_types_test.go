@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/drape-io/drape-cli/internal/api"
@@ -428,5 +429,24 @@ func TestUnifiedShapeConsistency(t *testing.T) {
 				t.Errorf("case %d: missing top-level key %q", i, key)
 			}
 		}
+	}
+}
+
+// The action reads cve_counts from the CLI's JSON, not from the server.
+func TestUploadResultPassesPerCVECountsThrough(t *testing.T) {
+	result := UploadResult{Uploads: []UploadEntry{{
+		Result: &api.ScanStatusResponse{ScanDiff: &api.ScanDiffInfo{
+			CVECounts: &api.CVECounts{New: map[string]int{"high": 1}, Existing: 2, NoFix: 3},
+		}},
+	}}}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	want := `"cve_counts":{"new":{"high":1},"existing":2,"suppressed":0,"no_fix":3}`
+	if !strings.Contains(string(data), want) {
+		t.Errorf("JSON missing %s\nGot: %s", want, data)
 	}
 }

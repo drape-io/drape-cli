@@ -106,3 +106,32 @@ func TestMapScanStatusReadsReportURLAndExistingActionableCVEs(t *testing.T) {
 		t.Errorf("ExistingActionableCVEs = %+v, want CVE-1 (not-fixed)", got)
 	}
 }
+
+func TestMapScanDiffReadsPerCVECounts(t *testing.T) {
+	diff := mapScanDiff(map[string]any{
+		"new_high_count": float64(2),
+		"cve_counts": map[string]any{
+			"new":        map[string]any{"critical": float64(0), "high": float64(1)},
+			"existing":   float64(3),
+			"suppressed": float64(1),
+			"no_fix":     float64(2),
+		},
+	})
+
+	got := diff.CVECounts
+	if got == nil {
+		t.Fatal("CVECounts = nil, want parsed counts")
+	}
+	if got.New["high"] != 1 || got.Existing != 3 || got.Suppressed != 1 || got.NoFix != 2 {
+		t.Errorf("CVECounts = %+v", *got)
+	}
+	if diff.NewHighCount != 2 {
+		t.Errorf("NewHighCount = %d, want the per-package 2", diff.NewHighCount)
+	}
+}
+
+func TestMapScanDiffWithoutPerCVECounts(t *testing.T) {
+	if diff := mapScanDiff(map[string]any{}); diff.CVECounts != nil {
+		t.Errorf("CVECounts = %+v, want nil from a server that doesn't send them", *diff.CVECounts)
+	}
+}

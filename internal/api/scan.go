@@ -38,6 +38,20 @@ type ScanDiffInfo struct {
 	ExistingActionableCVEs []ScanCVE      `json:"existing_actionable_cves,omitempty"`
 	SLAViolations          []SLAViolation `json:"sla_violations"`
 	FailureReasons         []string       `json:"failure_reasons"`
+	// The counts and lists above hold one entry per (CVE, package) pair.
+	// CVECounts counts each CVE once. Nil from servers that don't send it.
+	CVECounts *CVECounts `json:"cve_counts,omitempty"`
+}
+
+// CVECounts counts a scan diff per CVE rather than per package.
+type CVECounts struct {
+	// New CVEs that need action, keyed by their highest blocking severity.
+	New map[string]int `json:"new"`
+	// Unchanged CVEs that still need action and aren't counted as new.
+	Existing int `json:"existing"`
+	// New CVEs with nothing to act on: suppressed, or no fix upstream.
+	Suppressed int `json:"suppressed"`
+	NoFix      int `json:"no_fix"`
 }
 
 // ScanCVE represents a CVE in diff results.
@@ -118,6 +132,21 @@ func mapScanDiff(m map[string]any) *ScanDiffInfo {
 		NonActionableCount: getIntVal(m, "non_actionable_cves_count"),
 		UnchangedCVECount:  getIntVal(m, "unchanged_cves_count"),
 		FailureReasons:     getStringSlice(m, "failure_reasons"),
+	}
+
+	if cm, ok := m["cve_counts"].(map[string]any); ok {
+		counts := &CVECounts{
+			New:        map[string]int{},
+			Existing:   getIntVal(cm, "existing"),
+			Suppressed: getIntVal(cm, "suppressed"),
+			NoFix:      getIntVal(cm, "no_fix"),
+		}
+		if nm, ok := cm["new"].(map[string]any); ok {
+			for sev := range nm {
+				counts.New[sev] = getIntVal(nm, sev)
+			}
+		}
+		diff.CVECounts = counts
 	}
 
 	if cves, ok := m["new_cves"].([]any); ok {
