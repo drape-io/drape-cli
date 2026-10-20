@@ -191,6 +191,10 @@ func TestPrintScanDiffPrefersPerCVECounts(t *testing.T) {
 			Existing: 3,
 			NoFix:    2,
 		},
+		ResolvedCVEs: []api.ScanCVE{
+			{CVEID: "CVE-2026-0009", PackageName: "libssl3"},
+			{CVEID: "CVE-2026-0009", PackageName: "openssl"},
+		},
 	}
 	_ = printScanDiff(diff, 0)
 
@@ -199,6 +203,7 @@ func TestPrintScanDiffPrefersPerCVECounts(t *testing.T) {
 		"New CVEs:    1 (critical: 0, high: 1, medium: 0, low: 0)",
 		"Won't fix:   2",
 		"Need action: 3",
+		"Resolved:    1",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q\nGot:\n%s", want, got)

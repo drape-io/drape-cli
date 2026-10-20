@@ -262,6 +262,15 @@ func wholeScanFailsOnVulns(status *api.ScanStatusResponse, threshold string) boo
 type diffCounts struct {
 	critical, high, medium, low int
 	suppressed, noFix, existing int
+	resolved                    int
+}
+
+func uniqueCVEs(cves []api.ScanCVE) int {
+	ids := make(map[string]struct{}, len(cves))
+	for _, c := range cves {
+		ids[c.CVEID] = struct{}{}
+	}
+	return len(ids)
 }
 
 // summaryCounts picks the diff's per-CVE counts when the server sends them,
@@ -278,6 +287,7 @@ func summaryCounts(diff *api.ScanDiffInfo) diffCounts {
 			suppressed: cc.Suppressed,
 			noFix:      cc.NoFix,
 			existing:   cc.Existing,
+			resolved:   uniqueCVEs(diff.ResolvedCVEs),
 		}
 	}
 	return diffCounts{
@@ -288,6 +298,7 @@ func summaryCounts(diff *api.ScanDiffInfo) diffCounts {
 		suppressed: diff.SuppressedCVECount,
 		noFix:      diff.NonActionableCount,
 		existing:   len(diff.ExistingActionableCVEs),
+		resolved:   len(diff.ResolvedCVEs),
 	}
 }
 
@@ -309,8 +320,8 @@ func printScanDiff(diff *api.ScanDiffInfo, prNumber int) error {
 	if c.noFix > 0 {
 		output.Info("  Won't fix:   %d  (reported, not blocking)", c.noFix)
 	}
-	if len(diff.ResolvedCVEs) > 0 {
-		output.Info("  Resolved:    %d", len(diff.ResolvedCVEs))
+	if c.resolved > 0 {
+		output.Info("  Resolved:    %d", c.resolved)
 	}
 	// The server only counts unchanged findings per package.
 	if diff.CVECounts == nil {
