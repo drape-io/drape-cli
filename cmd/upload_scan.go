@@ -50,7 +50,7 @@ func init() {
 	uploadScanCmd.Flags().StringVar(&flagScanName, "scan-name", "", "Scan name (e.g. docker image name, tool name)")
 	uploadScanCmd.Flags().StringVar(&flagScanTag, "scan-tag", "", "Scan tag (e.g. image tag, version)")
 	uploadScanCmd.Flags().StringVar(&flagScanType, "scan-type", "", "Scan type: image, dependency (default: auto-detect from format)")
-	uploadScanCmd.Flags().BoolVar(&flagScanFailOnVulns, "fail-on-vulnerabilities", false, "Exit non-zero if new unsuppressed vulnerabilities are found (every finding counts as new without a PR baseline)")
+	uploadScanCmd.Flags().BoolVar(&flagScanFailOnVulns, "fail-on-vulnerabilities", false, "Exit non-zero if new unsuppressed vulnerabilities are found (every finding counts as new when there is no earlier scan to compare against)")
 	uploadScanCmd.Flags().StringVar(&flagScanFailOnSeverity, "fail-on-severity", "medium", "Minimum severity to fail on: critical, high, medium, low, any (default: medium)")
 
 	uploadCmd.AddCommand(uploadScanCmd)
@@ -217,9 +217,11 @@ func printScanSummary(filename string, status *api.ScanStatusResponse) {
 // run. With a diff it counts only the CVEs the diff calls new, so a PR that
 // adds nothing passes even when the image still carries older findings.
 // Those are enforced through the server's SLA policy instead. The diff's
-// counts already exclude suppressed and won't-fix CVEs. Without a PR baseline
-// the server treats every CVE as new, so a push to the default branch still
-// gates on the whole scan.
+// counts already exclude suppressed and won't-fix CVEs. The server diffs a PR
+// against its target branch and a push to the default branch against that
+// branch's previous scan. With nothing to compare against (the first scan of a
+// name, a push to another branch, or a diff that failed) it treats every CVE as
+// new, so the run gates on the whole scan.
 func scanFailsOnVulns(status *api.ScanStatusResponse, threshold string) bool {
 	if d := status.ScanDiff; d != nil {
 		counts := map[string]int{
