@@ -219,9 +219,10 @@ func printScanSummary(filename string, status *api.ScanStatusResponse) {
 // Those are enforced through the server's SLA policy instead. The diff's
 // counts already exclude suppressed and won't-fix CVEs. The server diffs a PR
 // against its target branch and a push to the default branch against that
-// branch's previous scan. With nothing to compare against (the first scan of a
-// name, a push to another branch, or a diff that failed) it treats every CVE as
-// new, so the run gates on the whole scan.
+// branch's previous scan. With nothing to compare against (no earlier scan of
+// that name on the branch it compares with, a push to a non-default branch, or
+// a diff that failed) it treats every CVE as new, so the run gates on the whole
+// scan.
 func scanFailsOnVulns(status *api.ScanStatusResponse, threshold string) bool {
 	if d := status.ScanDiff; d != nil {
 		counts := map[string]int{
