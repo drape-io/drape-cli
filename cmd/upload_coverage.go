@@ -227,6 +227,11 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 
 	batchID := batchResp.BatchID
 	result, uploadErrors := ctx.uploadFiles("coverage", files, func(_ string) map[string]any { return metadata }, &batchID)
+	if refused := api.PaymentRequired(); refused != nil {
+		// A batch missing files has no result to check: end with the refusal, which exits 0.
+		setResult(result)
+		return &ExitError{Code: exitcode.UploadError, Err: refused}
+	}
 	if err := checkAllFailed(uploadErrors, result.Uploads); err != nil {
 		return err
 	}

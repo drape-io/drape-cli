@@ -24,6 +24,15 @@ func drapeServer(t *testing.T, upload http.HandlerFunc) *httptest.Server {
 	})
 	mux.HandleFunc("/api/v1/orgs/acme/repos/7/uploads", upload)
 	mux.HandleFunc("/put", func(w http.ResponseWriter, r *http.Request) {})
+	mux.HandleFunc("/api/v1/orgs/acme/repos/7/upload-batches", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"batch_id": 9})
+	})
+	mux.HandleFunc("/api/v1/orgs/acme/repos/7/uploads/5/status", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"upload_id": 5, "status": "completed",
+			"result": map[string]any{"tests_ingested": 3, "failed_count": 1, "unsuppressed_failure_count": 1},
+		})
+	})
 	mux.HandleFunc("/api/v1/orgs/acme/repos/7/uploads/5/complete", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Drape-Billing-Warning", "trial_expiring")
 		w.Header().Set("X-Drape-Billing-Days-Remaining", "2")
@@ -41,7 +50,7 @@ func uploadLint(t *testing.T, server *httptest.Server) (int, string) {
 
 // run runs `drape upload <command>` with `files` report files against server and returns its exit
 // code and stderr.
-func run(t *testing.T, server *httptest.Server, command string, files int, json bool) (int, string) {
+func run(t *testing.T, server *httptest.Server, command string, files int, json bool, extra ...string) (int, string) {
 	t.Helper()
 	args := make([]string, 0, files+16)
 	args = append(args, "upload", command)
@@ -61,6 +70,7 @@ func run(t *testing.T, server *httptest.Server, command string, files int, json 
 	args = append(args, "--org", "acme", "--repo", "acme/web", "--api-key", "key",
 		"--api-url", server.URL, "--branch", "main", "--sha", "abc123", "--wait=false",
 		fmt.Sprintf("--json=%t", json))
+	args = append(args, extra...)
 	rootCmd.SetArgs(args)
 	return Execute(), stderr.String()
 }
@@ -193,15 +203,7 @@ func TestARefusalStopsAMultiFileUploadAndSaysSoInJSON(t *testing.T) {
 }
 
 func TestARefusalAfterSomeUploadsSaysSomeWereSaved(t *testing.T) {
-	var initiated int
-	server := drapeServer(t, func(w http.ResponseWriter, r *http.Request) {
-		initiated++
-		if initiated > 1 {
-			refuse(w, "https://app.drape.io/acme/upgrade/")
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"upload_id": 5, "upload_url": "http://" + r.Host + "/put"})
-	})
+	server := drapeServer(t, savesFirst())
 
 	code, stderr := run(t, server, "tests", 2, false)
 
@@ -210,5 +212,41 @@ func TestARefusalAfterSomeUploadsSaysSomeWereSaved(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "some results from this run were not saved") {
 		t.Errorf("stderr should say only some results were lost:\n%s", stderr)
+	}
+}
+
+// savesFirst accepts the first upload and refuses the rest.
+func savesFirst() http.HandlerFunc {
+	var initiated int
+	return func(w http.ResponseWriter, r *http.Request) {
+		initiated++
+		if initiated > 1 {
+			refuse(w, "https://app.drape.io/acme/upgrade/")
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"upload_id": 5, "upload_url": "http://" + r.Host + "/put"})
+	}
+}
+
+func TestARefusedCoverageBatchExitsZero(t *testing.T) {
+	server := drapeServer(t, savesFirst())
+
+	code, stderr := run(t, server, "coverage", 2, false, "--format", "cobertura")
+
+	if code != exitcode.Success {
+		t.Errorf("exit code = %d, want %d: a batch the server refused can't fail CI\n%s", code, exitcode.Success, stderr)
+	}
+}
+
+func TestSavedResultsThatFailStillFailTheRun(t *testing.T) {
+	server := drapeServer(t, savesFirst())
+
+	code, stderr := run(t, server, "tests", 2, false, "--wait=true")
+
+	if code != exitcode.TestFailure {
+		t.Errorf("exit code = %d, want %d: a failing test that was saved still fails\n%s", code, exitcode.TestFailure, stderr)
+	}
+	if !strings.Contains(stderr, "some results from this run were not saved") {
+		t.Errorf("stderr should say some results were not saved:\n%s", stderr)
 	}
 }

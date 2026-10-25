@@ -92,12 +92,11 @@ func Execute() int {
 		}
 	}
 
-	// Billing never fails a customer's CI: a run the server refused exits 0, loudly. A failure in
-	// results that were saved (failing tests, a new vulnerability) still fails it.
+	// Billing never fails a customer's CI: a run the server refused exits 0, loudly. Only a check
+	// that saved results failed (failing tests, a new vulnerability) still fails it.
 	if refused != nil {
 		reportPaymentRequired(refused)
-		var refusal *api.PaymentRequiredError
-		if savedUploads == 0 || errors.As(err, &refusal) {
+		if !failedCheck(err) {
 			return exitcode.Success
 		}
 	} else if warning := api.Warning(); warning != nil {
@@ -136,6 +135,20 @@ func refusalMessage(refused *api.PaymentRequiredError) string {
 		message += " An admin can restore it at " + refused.UpgradeURL + "."
 	}
 	return message
+}
+
+// failedCheck reports whether err is a check that saved results failed, rather than an upload,
+// timeout or usage problem.
+func failedCheck(err error) bool {
+	var coded *ExitError
+	if savedUploads == 0 || !errors.As(err, &coded) {
+		return false
+	}
+	switch coded.Code {
+	case exitcode.TestFailure, exitcode.CoverageRegression, exitcode.LintFailure, exitcode.ScanFailure:
+		return true
+	}
+	return false
 }
 
 // withBilling adds the refusal to a command's JSON result, or makes one when the command had none.
