@@ -127,6 +127,7 @@ func (ctx *uploadContext) uploadFile(uploadType, filename string, data []byte, m
 		return 0, err
 	}
 
+	savedUploads++
 	return initResp.UploadID, nil
 }
 

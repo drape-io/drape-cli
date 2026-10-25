@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -29,6 +30,10 @@ var (
 // pendingJSON holds the result to be emitted as JSON after command execution.
 // Commands call setResult() to populate this; Execute() emits it.
 var pendingJSON any
+
+// savedUploads counts the uploads this run completed, to tell a run the server refused entirely
+// from one where some results were saved.
+var savedUploads int
 
 // setResult stores a result for JSON emission after the command completes.
 // This is the single place commands register their output; Execute() handles
@@ -69,9 +74,15 @@ func init() {
 // Execute runs the root command and returns an exit code.
 func Execute() int {
 	pendingJSON = nil
+	savedUploads = 0
 	api.ResetBilling()
 
 	err := rootCmd.Execute()
+
+	refused := api.PaymentRequired()
+	if refused != nil && flagJSON {
+		pendingJSON = withBilling(pendingJSON, refused)
+	}
 
 	// Emit JSON result if available — even on error, so the consumer
 	// can parse partial results (e.g. scan with policy failures).
@@ -81,12 +92,15 @@ func Execute() int {
 		}
 	}
 
-	// Billing never fails a customer's CI: a run the server refused for billing exits 0, loudly.
-	if refused := api.PaymentRequired(); refused != nil {
+	// Billing never fails a customer's CI: a run the server refused exits 0, loudly. A failure in
+	// results that were saved (failing tests, a new vulnerability) still fails it.
+	if refused != nil {
 		reportPaymentRequired(refused)
-		return exitcode.Success
-	}
-	if warning := api.Warning(); warning != nil {
+		var refusal *api.PaymentRequiredError
+		if savedUploads == 0 || errors.As(err, &refusal) {
+			return exitcode.Success
+		}
+	} else if warning := api.Warning(); warning != nil {
 		reportBillingWarning(warning)
 	}
 
@@ -107,18 +121,42 @@ func Execute() int {
 // reportPaymentRequired says, on stderr and as a GitHub Actions annotation when in one, that
 // nothing from this run was saved and where an admin can restore access.
 func reportPaymentRequired(refused *api.PaymentRequiredError) {
-	message := "Drape: this organization's Drape access has ended; results from this run were not saved."
+	message := refusalMessage(refused)
+	output.Warn("%s", message)
+	annotate("Drape access has ended", message)
+}
+
+func refusalMessage(refused *api.PaymentRequiredError) string {
+	saved := "results from this run were not saved."
+	if savedUploads > 0 {
+		saved = "some results from this run were not saved."
+	}
+	message := "Drape: this organization's Drape access has ended; " + saved
 	if refused.UpgradeURL != "" {
 		message += " An admin can restore it at " + refused.UpgradeURL + "."
 	}
-	output.Warn("%s", message)
-	annotate("Drape access has ended", message)
+	return message
+}
+
+// withBilling adds the refusal to a command's JSON result, or makes one when the command had none.
+func withBilling(result any, refused *api.PaymentRequiredError) any {
+	billing := &BillingResult{
+		Status: "payment_required", Message: refusalMessage(refused), UpgradeURL: refused.UpgradeURL,
+	}
+	if upload, ok := result.(UploadResult); ok {
+		upload.Billing = billing
+		return upload
+	}
+	return UploadResult{Uploads: []UploadEntry{}, Billing: billing}
 }
 
 // reportBillingWarning says the organization's access ends soon, before anything is blocked.
 func reportBillingWarning(warning *api.BillingWarning) {
 	when := "soon"
-	if warning.DaysRemaining >= 0 {
+	switch {
+	case warning.DaysRemaining == 0:
+		when = "today"
+	case warning.DaysRemaining > 0:
 		when = fmt.Sprintf("in %d day%s", warning.DaysRemaining, plural(warning.DaysRemaining))
 	}
 	var message string
@@ -127,8 +165,10 @@ func reportBillingWarning(warning *api.BillingWarning) {
 		message = "Drape: this organization's trial ends " + when + ". An admin can choose a plan in Drape."
 	case "payment_past_due":
 		message = "Drape: this organization's payment is past due; uploads stop " + when + " unless an admin fixes billing in Drape."
-	default:
+	case "subscription_expired":
 		message = "Drape: this organization's Drape access has ended; uploads stop " + when + " unless an admin restores it in Drape."
+	default:
+		message = "Drape: this organization's billing needs attention in Drape."
 	}
 	output.Warn("%s", message)
 	annotate("Drape billing", message)
@@ -182,6 +222,10 @@ type ExitError struct {
 
 func (e *ExitError) Error() string {
 	return e.Err.Error()
+}
+
+func (e *ExitError) Unwrap() error {
+	return e.Err
 }
 
 // newClient creates an API client from global flags, resolving env var defaults.

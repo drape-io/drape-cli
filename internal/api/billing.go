@@ -3,8 +3,11 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"sync"
+	"unicode"
 )
 
 // Headers Drape sets on API responses while an organization's billing needs attention, before
@@ -60,6 +63,16 @@ func ResetBilling() {
 	defer billing.Unlock()
 	billing.paymentRequired = nil
 	billing.warning = nil
+}
+
+// safeURL returns raw if it is a plain https URL, else "": it is printed where CI runners read
+// workflow commands, so a line break in it could inject one.
+func safeURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" || strings.ContainsFunc(raw, unicode.IsControl) {
+		return ""
+	}
+	return raw
 }
 
 func recordPaymentRequired(err *PaymentRequiredError) {

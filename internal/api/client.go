@@ -133,6 +133,7 @@ func (c *Client) doWithRetries(req *http.Request) (*http.Response, error) {
 
 // ErrorResponse represents an API error.
 type ErrorResponse struct {
+	Code       string `json:"code"`
 	Error      string `json:"error"`
 	Message    string `json:"message"`
 	Detail     string `json:"detail"`
@@ -215,8 +216,9 @@ func parseErrorResponse(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
 	var errResp ErrorResponse
 	parsed := json.Unmarshal(body, &errResp) == nil
-	if resp.StatusCode == http.StatusPaymentRequired {
-		err := &PaymentRequiredError{Detail: errResp.Detail, UpgradeURL: errResp.UpgradeURL}
+	// Only Drape's own refusal: a 402 from a proxy in front of it is an ordinary failure.
+	if resp.StatusCode == http.StatusPaymentRequired && parsed && errResp.Code == "payment_required" {
+		err := &PaymentRequiredError{Detail: errResp.Detail, UpgradeURL: safeURL(errResp.UpgradeURL)}
 		recordPaymentRequired(err)
 		return err
 	}
