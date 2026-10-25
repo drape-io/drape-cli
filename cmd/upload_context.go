@@ -157,6 +157,11 @@ func (ctx *uploadContext) uploadFiles(uploadType string, files []string, metadat
 
 		metadata := metadataFn(filename)
 		uploadID, err := ctx.uploadFile(uploadType, filename, data, metadata, batchID)
+		if api.PaymentRequired() != nil {
+			// Every other file would be refused the same way; Execute says why, once.
+			uploadErrors++
+			break
+		}
 		if err != nil {
 			output.Error("Failed to upload %s: %v", filename, err)
 			uploadErrors++

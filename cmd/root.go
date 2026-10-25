@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -68,6 +69,7 @@ func init() {
 // Execute runs the root command and returns an exit code.
 func Execute() int {
 	pendingJSON = nil
+	api.ResetBilling()
 
 	err := rootCmd.Execute()
 
@@ -77,6 +79,15 @@ func Execute() int {
 		if jsonErr := output.JSON(pendingJSON); jsonErr != nil {
 			output.Error("failed to write JSON output: %v", jsonErr)
 		}
+	}
+
+	// Billing never fails a customer's CI: a run the server refused for billing exits 0, loudly.
+	if refused := api.PaymentRequired(); refused != nil {
+		reportPaymentRequired(refused)
+		return exitcode.Success
+	}
+	if warning := api.Warning(); warning != nil {
+		reportBillingWarning(warning)
 	}
 
 	if err != nil {
@@ -91,6 +102,56 @@ func Execute() int {
 		return exitcode.UsageError
 	}
 	return exitcode.Success
+}
+
+// reportPaymentRequired says, on stderr and as a GitHub Actions annotation when in one, that
+// nothing from this run was saved and where an admin can restore access.
+func reportPaymentRequired(refused *api.PaymentRequiredError) {
+	message := "Drape: this organization's Drape access has ended; results from this run were not saved."
+	if refused.UpgradeURL != "" {
+		message += " An admin can restore it at " + refused.UpgradeURL + "."
+	}
+	output.Warn("%s", message)
+	annotate("Drape access has ended", message)
+}
+
+// reportBillingWarning says the organization's access ends soon, before anything is blocked.
+func reportBillingWarning(warning *api.BillingWarning) {
+	when := "soon"
+	if warning.DaysRemaining >= 0 {
+		when = fmt.Sprintf("in %d day%s", warning.DaysRemaining, plural(warning.DaysRemaining))
+	}
+	var message string
+	switch warning.Kind {
+	case "trial_expiring":
+		message = "Drape: this organization's trial ends " + when + ". An admin can choose a plan in Drape."
+	case "payment_past_due":
+		message = "Drape: this organization's payment is past due; uploads stop " + when + " unless an admin fixes billing in Drape."
+	default:
+		message = "Drape: this organization's Drape access has ended; uploads stop " + when + " unless an admin restores it in Drape."
+	}
+	output.Warn("%s", message)
+	annotate("Drape billing", message)
+}
+
+// annotate shows message as a warning on the GitHub Actions run, where stderr is easy to miss.
+func annotate(title, message string) {
+	if os.Getenv("GITHUB_ACTIONS") != "true" {
+		return
+	}
+	_, _ = fmt.Fprintf(output.Stderr, "::warning title=%s::%s\n", title, workflowEscape(message))
+}
+
+// workflowEscape escapes what GitHub's workflow commands would read as the end of a message.
+func workflowEscape(s string) string {
+	return strings.NewReplacer("%", "%25", "\r", "%0D", "\n", "%0A").Replace(s)
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // argsErrorRe matches Cobra's "accepts N arg(s), received M" errors.
