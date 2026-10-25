@@ -181,6 +181,8 @@ Print CLI version information.
 | 5 | Parse error (couldn't parse input files) |
 | 6 | Coverage regression (coverage diff check failed) |
 
+Billing never fails your CI. If your organization's Drape access has ended, the server refuses the upload, and the CLI prints a warning with a link to restore access and exits 0. If access ends partway through a run, results already saved are still checked as usual: failing tests, a coverage regression, lint violations or new vulnerabilities in them still fail the run, and nothing else does. With `--json`, the result has a `billing` field saying what was refused. On GitHub Actions the warning also appears as an annotation on the run. While access is about to end (a trial ending, a payment past due), uploads still work and the CLI prints a warning with the days left.
+
 ## CI Environment Auto-Detection
 
 The CLI automatically detects branch, commit SHA, PR number, and target branch from these CI providers:

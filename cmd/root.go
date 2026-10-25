@@ -2,6 +2,8 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -28,6 +30,10 @@ var (
 // pendingJSON holds the result to be emitted as JSON after command execution.
 // Commands call setResult() to populate this; Execute() emits it.
 var pendingJSON any
+
+// savedUploads counts the uploads this run completed, to tell a run the server refused entirely
+// from one where some results were saved.
+var savedUploads int
 
 // setResult stores a result for JSON emission after the command completes.
 // This is the single place commands register their output; Execute() handles
@@ -68,8 +74,15 @@ func init() {
 // Execute runs the root command and returns an exit code.
 func Execute() int {
 	pendingJSON = nil
+	savedUploads = 0
+	api.ResetBilling()
 
 	err := rootCmd.Execute()
+
+	refused := api.PaymentRequired()
+	if refused != nil && flagJSON {
+		pendingJSON = withBilling(pendingJSON, refused)
+	}
 
 	// Emit JSON result if available — even on error, so the consumer
 	// can parse partial results (e.g. scan with policy failures).
@@ -77,6 +90,22 @@ func Execute() int {
 		if jsonErr := output.JSON(pendingJSON); jsonErr != nil {
 			output.Error("failed to write JSON output: %v", jsonErr)
 		}
+	}
+
+	// Billing never fails a customer's CI: a run the server refused exits 0, loudly. Only a check
+	// that saved results failed (failing tests, a new vulnerability) still fails it.
+	if refused != nil {
+		reportPaymentRequired(refused)
+		if !failedCheck(err) {
+			var refusal *api.PaymentRequiredError
+			if err != nil && !errors.As(err, &refusal) {
+				// Not the refusal itself (a timeout waiting on saved results): still worth saying.
+				output.Warn("Drape: %v", err)
+			}
+			return exitcode.Success
+		}
+	} else if warning := api.Warning(); warning != nil {
+		reportBillingWarning(warning)
 	}
 
 	if err != nil {
@@ -91,6 +120,99 @@ func Execute() int {
 		return exitcode.UsageError
 	}
 	return exitcode.Success
+}
+
+// reportPaymentRequired says, on stderr and as a GitHub Actions annotation when in one, that
+// nothing from this run was saved and where an admin can restore access.
+func reportPaymentRequired(refused *api.PaymentRequiredError) {
+	message := refusalMessage(refused)
+	output.Warn("%s", message)
+	annotate("Drape access has ended", message)
+}
+
+func refusalMessage(refused *api.PaymentRequiredError) string {
+	saved := "results from this run were not saved."
+	if savedUploads > 0 {
+		saved = "some results from this run were not saved."
+	}
+	message := "Drape: this organization's Drape access has ended; " + saved
+	if refused.UpgradeURL != "" {
+		message += " An admin can restore it at " + refused.UpgradeURL + "."
+	}
+	return message
+}
+
+// failedCheck reports whether err is a check that saved results failed, rather than an upload,
+// timeout or usage problem.
+func failedCheck(err error) bool {
+	var coded *ExitError
+	if savedUploads == 0 || !errors.As(err, &coded) {
+		return false
+	}
+	switch coded.Code {
+	case exitcode.TestFailure, exitcode.CoverageRegression, exitcode.LintFailure, exitcode.ScanFailure:
+		return true
+	}
+	return false
+}
+
+// withBilling adds the refusal to a command's JSON result, or makes one when the command had none.
+func withBilling(result any, refused *api.PaymentRequiredError) any {
+	billing := &BillingResult{
+		Status: "payment_required", Message: refusalMessage(refused), UpgradeURL: refused.UpgradeURL,
+	}
+	if upload, ok := result.(UploadResult); ok {
+		upload.Billing = billing
+		if upload.Uploads == nil {
+			upload.Uploads = []UploadEntry{}
+		}
+		return upload
+	}
+	return UploadResult{Uploads: []UploadEntry{}, Billing: billing}
+}
+
+// reportBillingWarning says the organization's access ends soon, before anything is blocked.
+func reportBillingWarning(warning *api.BillingWarning) {
+	when := "soon"
+	switch {
+	case warning.DaysRemaining == 0:
+		when = "today"
+	case warning.DaysRemaining > 0:
+		when = fmt.Sprintf("in %d day%s", warning.DaysRemaining, plural(warning.DaysRemaining))
+	}
+	var message string
+	switch warning.Kind {
+	case "trial_expiring":
+		message = "Drape: this organization's trial ends " + when + ". An admin can choose a plan in Drape."
+	case "payment_past_due":
+		message = "Drape: this organization's payment is past due; uploads stop " + when + " unless an admin fixes billing in Drape."
+	case "subscription_expired":
+		message = "Drape: this organization's Drape access has ended; uploads stop " + when + " unless an admin restores it in Drape."
+	default:
+		message = "Drape: this organization's billing needs attention in Drape."
+	}
+	output.Warn("%s", message)
+	annotate("Drape billing", message)
+}
+
+// annotate shows message as a warning on the GitHub Actions run, where stderr is easy to miss.
+func annotate(title, message string) {
+	if os.Getenv("GITHUB_ACTIONS") != "true" {
+		return
+	}
+	_, _ = fmt.Fprintf(output.Stderr, "::warning title=%s::%s\n", title, workflowEscape(message))
+}
+
+// workflowEscape escapes what GitHub's workflow commands would read as the end of a message.
+func workflowEscape(s string) string {
+	return strings.NewReplacer("%", "%25", "\r", "%0D", "\n", "%0A").Replace(s)
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // argsErrorRe matches Cobra's "accepts N arg(s), received M" errors.
@@ -121,6 +243,10 @@ type ExitError struct {
 
 func (e *ExitError) Error() string {
 	return e.Err.Error()
+}
+
+func (e *ExitError) Unwrap() error {
+	return e.Err
 }
 
 // newClient creates an API client from global flags, resolving env var defaults.

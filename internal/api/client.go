@@ -125,6 +125,7 @@ func (c *Client) doWithRetries(req *http.Request) (*http.Response, error) {
 			continue
 		}
 
+		recordBillingWarning(resp)
 		return resp, nil
 	}
 	return nil, fmt.Errorf("request failed after %d attempts: %w", maxRetries, lastErr)
@@ -132,9 +133,11 @@ func (c *Client) doWithRetries(req *http.Request) (*http.Response, error) {
 
 // ErrorResponse represents an API error.
 type ErrorResponse struct {
-	Error   string `json:"error"`
-	Message string `json:"message"`
-	Detail  string `json:"detail"`
+	Code       string `json:"code"`
+	Error      string `json:"error"`
+	Message    string `json:"message"`
+	Detail     string `json:"detail"`
+	UpgradeURL string `json:"upgrade_url"`
 }
 
 // postJSON sends a POST request with a JSON body and decodes the response.
@@ -212,7 +215,14 @@ func (c *Client) getJSON(url string, result any) error {
 func parseErrorResponse(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
 	var errResp ErrorResponse
-	if json.Unmarshal(body, &errResp) == nil {
+	parsed := json.Unmarshal(body, &errResp) == nil
+	// Only Drape's own refusal: a 402 from a proxy in front of it is an ordinary failure.
+	if resp.StatusCode == http.StatusPaymentRequired && parsed && errResp.Code == "payment_required" {
+		err := &PaymentRequiredError{Detail: errResp.Detail, UpgradeURL: safeURL(errResp.UpgradeURL)}
+		recordPaymentRequired(err)
+		return err
+	}
+	if parsed {
 		msg := errResp.Error
 		if msg == "" {
 			msg = errResp.Message

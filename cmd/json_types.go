@@ -7,6 +7,15 @@ type UploadResult struct {
 	Uploads       []UploadEntry `json:"uploads"`
 	FilesMatched  int           `json:"files_matched"`
 	FilesUploaded int           `json:"files_uploaded"`
+	// Billing is set when the server refused uploads because the organization's access ended.
+	Billing *BillingResult `json:"billing,omitempty"`
+}
+
+// BillingResult says the server refused uploads for billing: none or only some were saved.
+type BillingResult struct {
+	Status     string `json:"status"` // "payment_required"
+	Message    string `json:"message"`
+	UpgradeURL string `json:"upgrade_url,omitempty"`
 }
 
 // UploadEntry is a single file entry within UploadResult.
