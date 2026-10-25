@@ -97,6 +97,11 @@ func Execute() int {
 	if refused != nil {
 		reportPaymentRequired(refused)
 		if !failedCheck(err) {
+			var refusal *api.PaymentRequiredError
+			if err != nil && !errors.As(err, &refusal) {
+				// Not the refusal itself (a timeout waiting on saved results): still worth saying.
+				output.Warn("Drape: %v", err)
+			}
 			return exitcode.Success
 		}
 	} else if warning := api.Warning(); warning != nil {
@@ -158,6 +163,9 @@ func withBilling(result any, refused *api.PaymentRequiredError) any {
 	}
 	if upload, ok := result.(UploadResult); ok {
 		upload.Billing = billing
+		if upload.Uploads == nil {
+			upload.Uploads = []UploadEntry{}
+		}
 		return upload
 	}
 	return UploadResult{Uploads: []UploadEntry{}, Billing: billing}

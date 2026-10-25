@@ -250,3 +250,16 @@ func TestSavedResultsThatFailStillFailTheRun(t *testing.T) {
 		t.Errorf("stderr should say some results were not saved:\n%s", stderr)
 	}
 }
+
+func TestARefusedCoverageBatchListsNoUploadsInJSON(t *testing.T) {
+	server := drapeServer(t, func(w http.ResponseWriter, r *http.Request) {
+		refuse(w, "https://app.drape.io/acme/upgrade/")
+	})
+
+	run(t, server, "coverage", 2, true, "--format", "cobertura")
+
+	result, ok := pendingJSON.(UploadResult)
+	if !ok || result.Uploads == nil || result.Billing == nil {
+		t.Errorf("JSON result = %#v, want an empty uploads list and billing", pendingJSON)
+	}
+}
