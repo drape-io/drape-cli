@@ -15,8 +15,7 @@ type ScanStatusResponse struct {
 	ErrorMessage                *string       `json:"error_message,omitempty"`
 	ReportURL                   string        `json:"report_url,omitempty"`
 	ScanDiff                    *ScanDiffInfo `json:"scan_diff,omitempty"`
-	// Where the repository stands on its default branch. Nil from servers
-	// that don't send it.
+	// Nil from servers that don't send it.
 	RepoSecurity *RepoSecurity `json:"repo_security,omitempty"`
 }
 

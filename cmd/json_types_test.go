@@ -450,3 +450,24 @@ func TestUploadResultPassesPerCVECountsThrough(t *testing.T) {
 		t.Errorf("JSON missing %s\nGot: %s", want, data)
 	}
 }
+
+// The action reads repo_security from the CLI's JSON, so its keys and zero
+// counts must come through unchanged.
+func TestUploadResultPassesRepoSecurityThrough(t *testing.T) {
+	result := UploadResult{Uploads: []UploadEntry{{
+		Result: &api.ScanStatusResponse{RepoSecurity: &api.RepoSecurity{
+			Repository: "acme/app", Branch: "main", ToFix: 9, PastSLA: 7, NoFix: 15,
+			URL: "https://drape.example/x",
+		}},
+	}}}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	want := `"repo_security":{"repository":"acme/app","branch":"main","to_fix":9,"past_sla":7,"no_fix":15,"suppressed":0,"url":"https://drape.example/x"}`
+	if !strings.Contains(string(data), want) {
+		t.Errorf("JSON missing %s\nGot: %s", want, data)
+	}
+}

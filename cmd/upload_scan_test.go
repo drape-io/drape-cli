@@ -236,10 +236,10 @@ func TestPrintScanSummaryShowsTheRepository(t *testing.T) {
 	defer output.Reset()
 
 	printScanSummary("scan.json", &api.ScanStatusResponse{
-		RepoSecurity: &api.RepoSecurity{Repository: "acme/app", Branch: "main", ToFix: 9, PastSLA: 7, NoFix: 15},
+		RepoSecurity: &api.RepoSecurity{Repository: "acme/app", Branch: "main", ToFix: 9, PastSLA: 7, NoFix: 15, Suppressed: 2},
 	})
 
-	want := "  Repository:      acme/app (main): 9 to fix (7 past SLA), 15 with no fix"
+	want := "  Repository:      acme/app (main): 9 to fix (7 past SLA), 15 with no fix, 2 suppressed"
 	if !strings.Contains(buf.String(), want) {
 		t.Errorf("missing repository line %q\nGot:\n%s", want, buf.String())
 	}
