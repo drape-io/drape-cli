@@ -227,3 +227,20 @@ func TestDrapeURLFallbackUsesTheRepositoriesRoute(t *testing.T) {
 		t.Errorf("drapeURL() = %q, want %q", got, want)
 	}
 }
+
+// The summary names where the repository stands, so a reader of the CI log
+// sees the same numbers as the Security tab.
+func TestPrintScanSummaryShowsTheRepository(t *testing.T) {
+	var buf bytes.Buffer
+	output.Stdout = &buf
+	defer output.Reset()
+
+	printScanSummary("scan.json", &api.ScanStatusResponse{
+		RepoSecurity: &api.RepoSecurity{Repository: "acme/app", Branch: "main", ToFix: 9, PastSLA: 7, NoFix: 15},
+	})
+
+	want := "  Repository:      acme/app (main): 9 to fix (7 past SLA), 15 with no fix"
+	if !strings.Contains(buf.String(), want) {
+		t.Errorf("missing repository line %q\nGot:\n%s", want, buf.String())
+	}
+}

@@ -135,3 +135,42 @@ func TestMapScanDiffWithoutPerCVECounts(t *testing.T) {
 		t.Errorf("CVECounts = %+v, want nil from a server that doesn't send them", *diff.CVECounts)
 	}
 }
+
+// The server reports where the repository stands on its default branch next
+// to the scan, so the CLI and the PR comment can show it. Older servers
+// don't send it.
+func TestMapScanStatusReadsRepoSecurity(t *testing.T) {
+	status := mapScanStatus(&UploadStatusResponse{
+		Status: "completed",
+		Result: map[string]any{
+			"scan_id": float64(1),
+			"repo_security": map[string]any{
+				"repository": "acme/app",
+				"branch":     "main",
+				"to_fix":     float64(9),
+				"past_sla":   float64(7),
+				"no_fix":     float64(15),
+				"suppressed": float64(2),
+				"url":        "https://drape.example/orgs/acme/repositories/acme/app/security/?branch=main",
+			},
+		},
+	})
+
+	want := RepoSecurity{
+		Repository: "acme/app",
+		Branch:     "main",
+		ToFix:      9,
+		PastSLA:    7,
+		NoFix:      15,
+		Suppressed: 2,
+		URL:        "https://drape.example/orgs/acme/repositories/acme/app/security/?branch=main",
+	}
+	if status.RepoSecurity == nil || *status.RepoSecurity != want {
+		t.Errorf("RepoSecurity = %+v, want %+v", status.RepoSecurity, want)
+	}
+
+	older := mapScanStatus(&UploadStatusResponse{Status: "completed", Result: map[string]any{"scan_id": float64(1)}})
+	if older.RepoSecurity != nil {
+		t.Errorf("expected no RepoSecurity from an older server, got %+v", older.RepoSecurity)
+	}
+}
