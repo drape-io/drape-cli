@@ -211,6 +211,25 @@ func printScanSummary(filename string, status *api.ScanStatusResponse) {
 	} else if status.HighestSeverity != nil {
 		output.Info("  Highest:         %s", *status.HighestSeverity)
 	}
+	if rs := status.RepoSecurity; rs != nil {
+		output.Info("  Repository:      %s", formatRepoSecurity(rs))
+	}
+}
+
+// formatRepoSecurity reads like the repository's Security page, e.g.
+// "acme/app (main): 9 to fix (7 past SLA), 15 with no fix".
+func formatRepoSecurity(rs *api.RepoSecurity) string {
+	line := fmt.Sprintf("%s (%s): %d to fix", rs.Repository, rs.Branch, rs.ToFix)
+	if rs.PastSLA > 0 {
+		line += fmt.Sprintf(" (%d past SLA)", rs.PastSLA)
+	}
+	if rs.NoFix > 0 {
+		line += fmt.Sprintf(", %d with no fix", rs.NoFix)
+	}
+	if rs.Suppressed > 0 {
+		line += fmt.Sprintf(", %d suppressed", rs.Suppressed)
+	}
+	return line
 }
 
 // scanFailsOnVulns reports whether --fail-on-vulnerabilities should fail the

@@ -15,6 +15,21 @@ type ScanStatusResponse struct {
 	ErrorMessage                *string       `json:"error_message,omitempty"`
 	ReportURL                   string        `json:"report_url,omitempty"`
 	ScanDiff                    *ScanDiffInfo `json:"scan_diff,omitempty"`
+	// Nil from servers that don't send it.
+	RepoSecurity *RepoSecurity `json:"repo_security,omitempty"`
+}
+
+// RepoSecurity counts a repository's open CVEs on its default branch, in the
+// buckets its Security page uses: ToFix have a fix to apply (PastSLA of them
+// are overdue), NoFix have none upstream, and Suppressed were accepted.
+type RepoSecurity struct {
+	Repository string `json:"repository"`
+	Branch     string `json:"branch"`
+	ToFix      int    `json:"to_fix"`
+	PastSLA    int    `json:"past_sla"`
+	NoFix      int    `json:"no_fix"`
+	Suppressed int    `json:"suppressed"`
+	URL        string `json:"url,omitempty"`
 }
 
 // ScanDiffInfo contains the result of comparing PR scan results against the base branch.
@@ -115,6 +130,17 @@ func mapScanStatus(raw *UploadStatusResponse) *ScanStatusResponse {
 	result.UnsuppressedHighestSeverity = getString(raw.Result, "unsuppressed_highest_severity")
 	if diffMap, ok := raw.Result["scan_diff"].(map[string]any); ok {
 		result.ScanDiff = mapScanDiff(diffMap)
+	}
+	if m, ok := raw.Result["repo_security"].(map[string]any); ok {
+		result.RepoSecurity = &RepoSecurity{
+			Repository: getStringVal(m, "repository"),
+			Branch:     getStringVal(m, "branch"),
+			ToFix:      getIntVal(m, "to_fix"),
+			PastSLA:    getIntVal(m, "past_sla"),
+			NoFix:      getIntVal(m, "no_fix"),
+			Suppressed: getIntVal(m, "suppressed"),
+			URL:        getStringVal(m, "url"),
+		}
 	}
 
 	return result
