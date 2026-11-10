@@ -114,6 +114,7 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 
 	var totalIngested int
 	var totalSuppressed int
+	var totalSkipped int
 	var totalFailed int
 	var totalUnsuppressedFailures int
 	var processingErrors int
@@ -137,10 +138,16 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 			ingested = *status.TestsIngested
 		}
 		output.Verbose("  %s: %d tests ingested", u.Filename, ingested)
+		for _, w := range status.Warnings {
+			output.Warn("  %s: %s", u.Filename, w)
+		}
 
 		totalIngested += ingested
 		if status.SuppressedCount != nil {
 			totalSuppressed += *status.SuppressedCount
+		}
+		if status.SkippedCount != nil {
+			totalSkipped += *status.SkippedCount
 		}
 		if status.FailedCount != nil {
 			totalFailed += *status.FailedCount
@@ -162,6 +169,9 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 	}
 	if totalSuppressed > 0 {
 		output.Info("  Suppressed:     %d", totalSuppressed)
+	}
+	if totalSkipped > 0 {
+		output.Info("  Skipped:        %d (see warnings above)", totalSkipped)
 	}
 	if uploadErrors > 0 {
 		output.Info("  Upload errors:  %d", uploadErrors)
