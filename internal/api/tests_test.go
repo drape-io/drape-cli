@@ -122,3 +122,24 @@ func TestMapTestStatus(t *testing.T) {
 		t.Errorf("expected unsuppressed_failure_count=1, got %v", result.UnsuppressedFailureCount)
 	}
 }
+
+func TestMapTestStatus_SkippedTests(t *testing.T) {
+	raw := &UploadStatusResponse{
+		UploadID: 7,
+		Status:   "completed",
+		Result: map[string]any{
+			"tests_ingested": float64(2),
+			"skipped_count":  float64(1),
+			"warnings":       []any{"Skipped 1 test Drape can't store:\n- t: its test name is too long"},
+		},
+	}
+
+	status := mapTestStatus(raw)
+
+	if status.SkippedCount == nil || *status.SkippedCount != 1 {
+		t.Fatalf("expected skipped_count=1, got %v", status.SkippedCount)
+	}
+	if len(status.Warnings) != 1 || status.Warnings[0] != raw.Result["warnings"].([]any)[0] {
+		t.Fatalf("expected the warning to be carried through, got %v", status.Warnings)
+	}
+}

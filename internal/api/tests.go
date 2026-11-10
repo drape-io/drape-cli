@@ -15,7 +15,10 @@ type TestStatusResponse struct {
 	FailedCount              *int     `json:"failed_count,omitempty"`
 	UnsuppressedFailureCount *int     `json:"unsuppressed_failure_count,omitempty"`
 	NewTestsDetected         []string `json:"new_tests_detected,omitempty"`
-	ErrorMessage             *string  `json:"error_message,omitempty"`
+	// Tests in the file Drape couldn't store; the rest were ingested.
+	SkippedCount *int     `json:"skipped_count,omitempty"`
+	Warnings     []string `json:"warnings,omitempty"`
+	ErrorMessage *string  `json:"error_message,omitempty"`
 }
 
 // PollTestStatus polls the upload status until it completes or times out.
@@ -49,6 +52,8 @@ func mapTestStatus(raw *UploadStatusResponse) *TestStatusResponse {
 		result.FailedCount = getInt(raw.Result, "failed_count")
 		result.UnsuppressedFailureCount = getInt(raw.Result, "unsuppressed_failure_count")
 		result.NewTestsDetected = getStringSlice(raw.Result, "new_tests_detected")
+		result.SkippedCount = getInt(raw.Result, "skipped_count")
+		result.Warnings = getStringSlice(raw.Result, "warnings")
 	}
 
 	return result
