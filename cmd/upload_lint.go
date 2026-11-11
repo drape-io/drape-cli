@@ -82,7 +82,10 @@ func runUploadLint(cmd *cobra.Command, args []string) error {
 	output.Info("Waiting for processing (timeout: %s)...", flagUploadWaitTimeout)
 	status, err := ctx.client.PollLintStatus(ctx.orgSlug, ctx.repoID, uploadID, flagUploadWaitTimeout)
 	if err != nil {
-		return failedAfterUpload(result, 0, status != nil && status.Status == "failed", err)
+		if status != nil && status.Status == "failed" {
+			return failedAfterUpload(result, 0, true, err)
+		}
+		return failedAfterUpload(result, 0, false, err)
 	}
 
 	result.Uploads[0].Result = status

@@ -188,7 +188,10 @@ func runSingleCoverageUpload(ctx *uploadContext, filePath string, metadata map[s
 	output.Info("Waiting for processing (timeout: %s)...", flagUploadWaitTimeout)
 	status, err := ctx.client.PollCoverageStatus(ctx.orgSlug, ctx.repoID, uploadID, flagUploadWaitTimeout)
 	if err != nil {
-		return failedAfterUpload(result, 0, status != nil && status.Status == "failed", err)
+		if status != nil && status.Status == "failed" {
+			return failedAfterUpload(result, 0, true, err)
+		}
+		return failedAfterUpload(result, 0, false, err)
 	}
 
 	result.Uploads[0].Result = status
@@ -259,7 +262,10 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 	batchStatus, err := ctx.client.PollCoverageBatchStatus(ctx.orgSlug, ctx.repoID, batchResp.BatchID, flagUploadWaitTimeout)
 	if err != nil {
 		// A batch's outcome is reported on its first upload, as on success.
-		return failedAfterUpload(result, 0, batchStatus != nil && batchStatus.Status == "failed", err)
+		if batchStatus != nil && batchStatus.Status == "failed" {
+			return failedAfterUpload(result, 0, true, err)
+		}
+		return failedAfterUpload(result, 0, false, err)
 	}
 
 	return renderBatchResult(result, batchStatus, ctx.prNumber)
