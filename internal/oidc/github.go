@@ -18,6 +18,14 @@ import (
 // token for up to about 90 seconds; Drape's 60 seconds of leeway on expiry covers the rest.
 const refreshBefore = 60 * time.Second
 
+// maxAttempts is how many times a token is requested before giving up, waiting 1s, then 2s.
+const maxAttempts = 3
+
+// retryable marks a failure worth another attempt: a network error, a 5xx or a 429.
+type retryable struct{ error }
+
+func (r retryable) Unwrap() error { return r.error }
+
 // GitHubActions fetches GitHub Actions OIDC tokens for one audience, caching each until shortly
 // before it expires. A job gets the env vars it needs only with `permissions: id-token: write`.
 type GitHubActions struct {
@@ -26,6 +34,7 @@ type GitHubActions struct {
 	Audience     string
 	HTTPClient   *http.Client
 	Now          func() time.Time
+	Sleep        func(time.Duration)
 
 	mu      sync.Mutex
 	token   string
@@ -46,6 +55,7 @@ func GitHubActionsFromEnv(getenv func(string) string, audience string) (*GitHubA
 		Audience:     audience,
 		HTTPClient:   &http.Client{Timeout: 30 * time.Second},
 		Now:          time.Now,
+		Sleep:        time.Sleep,
 	}, true
 }
 
@@ -56,7 +66,21 @@ func (g *GitHubActions) Token() (string, error) {
 	if g.token != "" && g.Now().Add(refreshBefore).Before(g.expires) {
 		return g.token, nil
 	}
-	token, expires, err := g.fetch()
+	var (
+		token   string
+		expires time.Time
+		err     error
+	)
+	for attempt := range maxAttempts {
+		if attempt > 0 {
+			g.Sleep(time.Second << (attempt - 1))
+		}
+		token, expires, err = g.fetch()
+		var r retryable
+		if !errors.As(err, &r) {
+			break
+		}
+	}
 	if err != nil {
 		return "", err
 	}
@@ -83,17 +107,21 @@ func (g *GitHubActions) fetch() (string, time.Time, error) {
 
 	resp, err := g.HTTPClient.Do(req)
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("requesting a GitHub Actions token: %w", err)
+		return "", time.Time{}, retryable{fmt.Errorf("requesting a GitHub Actions token: %w", err)}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if resp.StatusCode != http.StatusOK {
 		// The body is GitHub's error message, never a token.
-		return "", time.Time{}, fmt.Errorf("GitHub didn't issue a token (HTTP %d): %s",
+		err := fmt.Errorf("GitHub didn't issue a token (HTTP %d): %s",
 			resp.StatusCode, strings.TrimSpace(string(body)))
+		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+			return "", time.Time{}, retryable{err}
+		}
+		return "", time.Time{}, err
 	}
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("reading GitHub's token response: %w", err)
+		return "", time.Time{}, retryable{fmt.Errorf("reading GitHub's token response: %w", err)}
 	}
 
 	var issued struct {

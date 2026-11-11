@@ -25,12 +25,18 @@ type fakeGitHub struct {
 	expiresIn time.Duration
 	now       time.Time
 	status    int
+	failures  int // requests answered 503 before the first token
+	sleeps    []time.Duration
 }
 
 func newFakeGitHub(t *testing.T) *fakeGitHub {
 	f := &fakeGitHub{expiresIn: 5 * time.Minute, now: time.Unix(1_700_000_000, 0), status: 200}
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.requests = append(f.requests, r)
+		if len(f.requests) <= f.failures {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		if f.status != 200 {
 			w.WriteHeader(f.status)
 			_, _ = w.Write([]byte(`{"message":"no id-token permission"}`))
@@ -54,6 +60,7 @@ func (f *fakeGitHub) source() *GitHubActions {
 		panic("expected a source")
 	}
 	src.Now = func() time.Time { return f.now }
+	src.Sleep = func(d time.Duration) { f.sleeps = append(f.sleeps, d) }
 	return src
 }
 
@@ -110,6 +117,37 @@ func TestGitHubRefusingIsAnErrorWithItsMessage(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "no id-token permission") {
 		t.Fatalf("err = %v", err)
 	}
+	if len(gh.requests) != 1 {
+		t.Errorf("a refusal was retried: %d requests", len(gh.requests))
+	}
+}
+
+func TestRetriesAGitHubServerError(t *testing.T) {
+	gh := newFakeGitHub(t)
+	gh.failures = 1
+
+	token, err := gh.source().Token()
+
+	if err != nil || token == "" {
+		t.Fatalf("token = %q, err = %v", token, err)
+	}
+	if len(gh.requests) != 2 || len(gh.sleeps) != 1 || gh.sleeps[0] != time.Second {
+		t.Errorf("%d requests, sleeps %v", len(gh.requests), gh.sleeps)
+	}
+}
+
+func TestGivesUpAfterThreeAttempts(t *testing.T) {
+	gh := newFakeGitHub(t)
+	gh.failures = 3
+
+	_, err := gh.source().Token()
+
+	if err == nil || !strings.Contains(err.Error(), "HTTP 503") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(gh.requests) != 3 || len(gh.sleeps) != 2 || gh.sleeps[1] != 2*time.Second {
+		t.Errorf("%d requests, sleeps %v", len(gh.requests), gh.sleeps)
+	}
 }
 
 func TestACutOffResponseIsAReadError(t *testing.T) {
@@ -124,6 +162,7 @@ func TestACutOffResponseIsAReadError(t *testing.T) {
 			"ACTIONS_ID_TOKEN_REQUEST_TOKEN": "runner-secret",
 		}[key]
 	}, "https://app.drape.io")
+	src.Sleep = func(time.Duration) {}
 
 	_, err := src.Token()
 
