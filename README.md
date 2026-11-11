@@ -52,10 +52,27 @@ docker run --rm -v $(pwd):/work -w /work ghcr.io/drape-io/drape-cli upload tests
 
 ## Authentication
 
-Set `DRAPE_API_KEY` as an environment variable or pass `--api-key`:
+**GitHub Actions: no key needed.** Give the job permission to request an OIDC token, and the CLI
+uses it when no API key is set:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+```
+
+GitHub issues a token for the job's repository that lasts a few minutes. Drape accepts it when the
+Drape GitHub App is connected for the repository's owner and the repository is turned on in
+Drape. The token decides the organization and repository, so `--org` and `--repo` aren't needed.
+If you set `--repo` to a different repository, the CLI stops with an error.
+
+Pull requests from forks get no OIDC token (and no secrets), so they can't upload.
+
+**Everywhere else**, set `DRAPE_API_KEY` as an environment variable or pass `--api-key`. A key
+always wins over a GitHub token:
 
 ```bash
-export DRAPE_API_KEY=drape_tok_xxxx
+export DRAPE_API_KEY=drp_org_xxxx
 ```
 
 
@@ -164,8 +181,8 @@ Print CLI version information.
 |------|---------|-------------|
 | `--org` | `DRAPE_ORG` | Organization slug |
 | `--repo` | `DRAPE_REPO` | Repository name (auto-detected from CI) |
-| `--api-key` | `DRAPE_API_KEY` | API key |
-| `--api-url` | `DRAPE_API_URL` | API base URL (default: `https://api.drape.io`) |
+| `--api-key` | `DRAPE_API_KEY` | API key (optional in GitHub Actions with `id-token: write`) |
+| `--api-url` | `DRAPE_API_URL` | API base URL (default: `https://app.drape.io`) |
 | `--verbose` | | Enable verbose logging |
 | `--dry-run` | | Parse and validate locally, don't upload |
 
@@ -210,6 +227,9 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # lets the CLI upload without an API key
     steps:
       - uses: actions/checkout@v4
       - name: Run tests
@@ -218,15 +238,9 @@ jobs:
 
       - name: Upload test results
         run: drape upload tests results.xml --wait
-        env:
-          DRAPE_API_KEY: ${{ secrets.DRAPE_API_KEY }}
-          DRAPE_ORG: my-org
 
       - name: Upload coverage
         run: drape upload coverage coverage.xml --format cobertura
-        env:
-          DRAPE_API_KEY: ${{ secrets.DRAPE_API_KEY }}
-          DRAPE_ORG: my-org
 ```
 
 ### GitLab CI

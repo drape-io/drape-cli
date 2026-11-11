@@ -21,10 +21,17 @@ type seekableReadCloser struct {
 
 func (s *seekableReadCloser) Close() error { return nil }
 
+// TokenSource supplies the bearer token for each request, for tokens that expire mid-run.
+type TokenSource interface {
+	Token() (string, error)
+}
+
 // Client communicates with the Drape API.
 type Client struct {
-	BaseURL    string
-	Token      string
+	BaseURL string
+	Token   string
+	// Tokens, when set, is asked for a token on every request instead of using Token.
+	Tokens     TokenSource
 	HTTPClient *http.Client
 	UserAgent  string
 }
@@ -61,7 +68,9 @@ func (c *Client) LookupRepo(orgSlug, repoName string) (*RepoInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	c.setHeaders(req)
+	if err := c.setHeaders(req); err != nil {
+		return nil, err
+	}
 
 	resp, err := c.doWithRetries(req)
 	if err != nil {
@@ -86,9 +95,34 @@ func (c *Client) LookupRepo(orgSlug, repoName string) (*RepoInfo, error) {
 	return &repos[0], nil
 }
 
-func (c *Client) setHeaders(req *http.Request) {
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+func (c *Client) setHeaders(req *http.Request) error {
+	token := c.Token
+	if c.Tokens != nil {
+		var err error
+		if token, err = c.Tokens.Token(); err != nil {
+			return err
+		}
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("User-Agent", c.UserAgent)
+	return nil
+}
+
+// CIIdentity is who a CI credential uploads as. RepoID and RepoName are set only for a
+// credential bound to one repository (a GitHub Actions token).
+type CIIdentity struct {
+	OrgSlug  string  `json:"org_slug"`
+	RepoID   *int    `json:"repo_id"`
+	RepoName *string `json:"repo_name"`
+}
+
+// Identity asks Drape which organization (and repository) this client's credential is for.
+func (c *Client) Identity() (*CIIdentity, error) {
+	var identity CIIdentity
+	if err := c.getJSON(c.BaseURL+"/api/v1/ci/identity", &identity); err != nil {
+		return nil, err
+	}
+	return &identity, nil
 }
 
 func (c *Client) doWithRetries(req *http.Request) (*http.Response, error) {
@@ -168,7 +202,9 @@ func (c *Client) postJSON(url string, reqBody any, result any) error {
 		httpReq.ContentLength = int64(sr.Len())
 		httpReq.Header.Set("Content-Type", "application/json")
 	}
-	c.setHeaders(httpReq)
+	if err := c.setHeaders(httpReq); err != nil {
+		return err
+	}
 
 	resp, err := c.doWithRetries(httpReq)
 	if err != nil {
@@ -194,7 +230,9 @@ func (c *Client) getJSON(url string, result any) error {
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
-	c.setHeaders(req)
+	if err := c.setHeaders(req); err != nil {
+		return err
+	}
 
 	resp, err := c.doWithRetries(req)
 	if err != nil {
