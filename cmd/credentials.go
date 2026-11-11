@@ -102,8 +102,9 @@ func isForkPullRequest(getenv func(string) string) bool {
 	if json.Unmarshal(data, &event) != nil {
 		return false
 	}
+	// A deleted fork leaves the head repository null.
 	head, base := event.PullRequest.Head.Repo.FullName, event.PullRequest.Base.Repo.FullName
-	return head != "" && base != "" && !strings.EqualFold(head, base)
+	return base != "" && !strings.EqualFold(head, base)
 }
 
 // sameRepository reports whether a --repo value names the token's repository: the full

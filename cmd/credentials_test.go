@@ -61,6 +61,23 @@ func TestMissingCredentialOnAForkPullRequestSaysForksCantUpload(t *testing.T) {
 	}
 }
 
+func TestMissingCredentialOnAPullRequestFromADeletedForkSaysForksCantUpload(t *testing.T) {
+	// GitHub sends a null head repository once the fork is deleted.
+	path := filepath.Join(t.TempDir(), "event.json")
+	event := `{"pull_request":{"head":{"repo":null},"base":{"repo":{"full_name":"acme/web"}}}}`
+	if err := os.WriteFile(path, []byte(event), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := missingCredential(env(map[string]string{
+		"GITHUB_ACTIONS":    "true",
+		"GITHUB_EVENT_NAME": "pull_request",
+		"GITHUB_EVENT_PATH": path,
+	}))
+	if !errors.Is(err, errForkPullRequest) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestSameRepositoryAcceptsTheFullOrBareNameInAnyCase(t *testing.T) {
 	for given, want := range map[string]bool{
 		"acme/web": true, "ACME/Web": true, "web": true, "Web": true, "acme/api": false, "api": false,
@@ -123,6 +140,8 @@ func githubActionsServer(t *testing.T, bearers *[]string) *httptest.Server {
 	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", server.URL+"/github-token?api-version=2.0")
 	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "runner-secret")
 	t.Setenv("DRAPE_API_KEY", "")
+	t.Setenv("DRAPE_ORG", "")
+	t.Setenv("DRAPE_REPO", "")
 	return server
 }
 
@@ -137,7 +156,7 @@ func uploadLintAs(t *testing.T, server *httptest.Server, extra ...string) (int, 
 	var printed bytes.Buffer
 	output.Stderr, output.Stdout = &printed, &printed
 	t.Cleanup(output.Reset)
-	t.Cleanup(func() { flagAPIKey, flagOrg, flagRepo = "", "", "" })
+	t.Cleanup(func() { flagAPIKey, flagOrg, flagRepo, flagVerbose = "", "", "", false })
 	flagAPIKey, flagOrg, flagRepo = "", "", ""
 	args := make([]string, 0, 10+len(extra))
 	args = append(args, "upload", "lint", report, "--api-url", server.URL,
@@ -150,7 +169,7 @@ func TestAGitHubActionsJobUploadsWithItsTokenAndNoConfiguredRepository(t *testin
 	var bearers []string
 	server := githubActionsServer(t, &bearers)
 
-	code, printed := uploadLintAs(t, server)
+	code, printed := uploadLintAs(t, server, "--verbose")
 
 	if code != exitcode.Success {
 		t.Fatalf("exit %d: %s", code, printed)
