@@ -41,7 +41,7 @@ func init() {
 
 func runUploadTests(cmd *cobra.Command, args []string) error {
 	if flagTestFormat != "" {
-		if err := checkFormat(flagTestFormat, testFormats); err != nil {
+		if err := checkChoice("--format", flagTestFormat, testFormats); err != nil {
 			return err
 		}
 	}

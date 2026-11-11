@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf16"
 
 	"github.com/drape-io/drape-cli/internal/exitcode"
 	"github.com/drape-io/drape-cli/internal/output"
@@ -98,6 +100,12 @@ func TestDryRunAcceptsEveryValidReport(t *testing.T) {
 		"trivy":          {"scan", writeReport(t, "trivy.json", validTrivy), "--format", "trivy-json"},
 		"pip-audit":      {"scan", writeReport(t, "audit.json", validPipAudit), "--format", "pip-audit-json"},
 		"coverage batch": {"coverage", writeReport(t, "a.xml", validCobertura), writeReport(t, "b.xml", validCobertura), "--format", "cobertura"},
+		// Windows tools write these; the server's parsers read them.
+		"sarif with utf-8 bom": {"lint", writeReport(t, "lint.sarif", "\xef\xbb\xbf"+validSARIF)},
+		"sarif in utf-16":      {"scan", writeReport(t, "scan.sarif", utf16LE(validSARIF))},
+		"latin-1 cobertura": {"coverage", writeReport(t, "c.xml",
+			"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><coverage line-rate=\"1.0\"><sources><source>caf\xe9</source></sources></coverage>"),
+			"--format", "cobertura"},
 	}
 	for name, args := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -118,13 +126,26 @@ func TestDryRunRejectsReportsThatDoNotMatchTheirFormat(t *testing.T) {
 		"directory":               {"coverage", t.TempDir(), "--format", "cobertura"},
 		"mixed batch": {"coverage", writeReport(t, "a.xml", validCobertura), writeReport(t, "lcov.info", validLCOV),
 			"--format", "cobertura"},
-		"malformed lint":       {"lint", broken},
-		"malformed scan":       {"scan", broken},
-		"sarif not cyclonedx":  {"scan", writeReport(t, "bom.json", validSARIF), "--format", "cyclonedx"},
-		"sarif not grype":      {"scan", writeReport(t, "grype.json", validSARIF), "--format", "grype-json"},
-		"sarif not trivy":      {"scan", writeReport(t, "trivy.json", validSARIF), "--format", "trivy-json"},
-		"sarif not pip-audit":  {"scan", writeReport(t, "audit.json", validSARIF), "--format", "pip-audit-json"},
-		"json array not sarif": {"lint", writeReport(t, "lint.sarif", `[]`)},
+		"malformed lint":              {"lint", broken},
+		"malformed scan":              {"scan", broken},
+		"sarif not cyclonedx":         {"scan", writeReport(t, "bom.json", validSARIF), "--format", "cyclonedx"},
+		"sarif not grype":             {"scan", writeReport(t, "grype.json", validSARIF), "--format", "grype-json"},
+		"sarif not trivy":             {"scan", writeReport(t, "trivy.json", validSARIF), "--format", "trivy-json"},
+		"sarif not pip-audit":         {"scan", writeReport(t, "audit.json", validSARIF), "--format", "pip-audit-json"},
+		"json array not sarif":        {"lint", writeReport(t, "lint.sarif", `[]`)},
+		"odd-length utf-16":           {"lint", writeReport(t, "lint.sarif", utf16LE(validSARIF)+"x")},
+		"sarif 1.x":                   {"lint", writeReport(t, "lint.sarif", `{"version": "1.0.0", "runs": []}`)},
+		"cobertura without line-rate": {"coverage", writeReport(t, "c.xml", `<coverage/>`), "--format", "cobertura"},
+		"lcov without end_of_record":  {"coverage", writeReport(t, "lcov.info", "SF:main.go\nDA:1,1\n"), "--format", "lcov"},
+		"go mode line only":           {"coverage", writeReport(t, "cover.out", "mode: set\n"), "--format", "go"},
+		"grype-shaped syft output": {"scan", writeReport(t, "grype.json", `{"matches": [], "descriptor": {"name": "syft"}}`),
+			"--format", "grype-json"},
+		"trivy without Results": {"scan", writeReport(t, "trivy.json", `{"SchemaVersion": 2, "ArtifactType": "x"}`),
+			"--format", "trivy-json"},
+		"cyclonedx given as pip-audit": {"scan", writeReport(t, "bom.json",
+			`{"bomFormat": "CycloneDX", "dependencies": [], "fixes": []}`), "--format", "pip-audit-json"},
+		"cyclonedx given as trivy": {"scan", writeReport(t, "bom.json",
+			`{"bomFormat": "CycloneDX", "SchemaVersion": 2, "ArtifactType": "x", "Results": []}`), "--format", "trivy-json"},
 	}
 	for name, args := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -133,6 +154,17 @@ func TestDryRunRejectsReportsThatDoNotMatchTheirFormat(t *testing.T) {
 			}
 		})
 	}
+}
+
+// utf16LE encodes s as UTF-16 little-endian with a byte-order mark, as Windows PowerShell writes files.
+func utf16LE(s string) string {
+	units := utf16.Encode([]rune(s))
+	b := make([]byte, 0, 2+2*len(units))
+	b = append(b, 0xff, 0xfe)
+	for _, u := range units {
+		b = binary.LittleEndian.AppendUint16(b, u)
+	}
+	return string(b)
 }
 
 // A batch's aggregate result isn't any one upload, so it must not carry an upload_id of 0.

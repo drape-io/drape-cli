@@ -29,7 +29,7 @@ func init() {
 }
 
 func runUploadLint(cmd *cobra.Command, args []string) error {
-	if err := checkFormat(flagLintFormat, lintFormats); err != nil {
+	if err := checkChoice("--format", flagLintFormat, lintFormats); err != nil {
 		return err
 	}
 

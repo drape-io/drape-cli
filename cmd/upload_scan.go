@@ -57,20 +57,12 @@ func init() {
 }
 
 func runUploadScan(cmd *cobra.Command, args []string) error {
-	if err := checkFormat(flagScanFormat, scanFormats); err != nil {
+	if err := checkChoice("--format", flagScanFormat, scanFormats); err != nil {
 		return err
 	}
 
-	// Validate --fail-on-severity value
-	validSev := false
-	for _, s := range validSeverities {
-		if flagScanFailOnSeverity == s {
-			validSev = true
-			break
-		}
-	}
-	if !validSev {
-		return &ExitError{Code: exitcode.UsageError, Err: fmt.Errorf("invalid --fail-on-severity value %q, must be one of: critical, high, medium, low, any", flagScanFailOnSeverity)}
+	if err := checkChoice("--fail-on-severity", flagScanFailOnSeverity, validSeverities); err != nil {
+		return err
 	}
 
 	files, err := expandGlobs(args)

@@ -54,7 +54,7 @@ func init() {
 }
 
 func runUploadCoverage(cmd *cobra.Command, args []string) error {
-	if err := checkFormat(flagCovFormat, coverageFormats); err != nil {
+	if err := checkChoice("--format", flagCovFormat, coverageFormats); err != nil {
 		return err
 	}
 
