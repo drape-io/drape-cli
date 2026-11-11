@@ -54,6 +54,10 @@ func init() {
 }
 
 func runUploadCoverage(cmd *cobra.Command, args []string) error {
+	if err := checkChoice("--format", flagCovFormat, coverageFormats); err != nil {
+		return err
+	}
+
 	files, err := expandGlobs(args)
 	if err != nil {
 		return &ExitError{Code: exitcode.UsageError, Err: err}
@@ -70,8 +74,7 @@ func runUploadCoverage(cmd *cobra.Command, args []string) error {
 	}
 
 	if flagDryRun {
-		ctx.dryRunSimple(files, flagCovFormat)
-		return nil
+		return ctx.dryRunCheck(files, flagCovFormat)
 	}
 
 	if err := ctx.resolveClient(); err != nil {

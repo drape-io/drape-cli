@@ -210,19 +210,6 @@ func (ctx *uploadContext) uploadFiles(uploadType string, files []string, metadat
 	return result, uploadErrors
 }
 
-// dryRunSimple handles the generic dry-run output for commands that don't do local validation.
-func (ctx *uploadContext) dryRunSimple(files []string, format string) {
-	names := make([]string, 0, len(files))
-	for _, f := range files {
-		name := filepath.Base(f)
-		output.Info("[dry-run] Would upload %s (format: %s, branch: %s, sha: %s)", name, format, ctx.branch, ctx.sha)
-		names = append(names, name)
-	}
-	if flagJSON {
-		setResult(DryRunResult{DryRun: true, Files: names})
-	}
-}
-
 // checkAllFailed returns an ExitError if every upload failed.
 func checkAllFailed(uploadErrors int, uploads []UploadEntry) error {
 	if uploadErrors > 0 && len(uploads) == 0 {

@@ -42,7 +42,8 @@ type CoverageResult struct {
 // CoverageStatusResponse is the CLI-facing status for a coverage upload.
 // Extracted from the unified UploadStatusResponse result dict.
 type CoverageStatusResponse struct {
-	UploadID     int     `json:"upload_id"`
+	// Zero for a batch's merged result, which belongs to no single upload.
+	UploadID     int     `json:"upload_id,omitempty"`
 	Status       string  `json:"status"`
 	ErrorMessage *string `json:"error_message,omitempty"`
 	ReportURL    string  `json:"report_url,omitempty"`

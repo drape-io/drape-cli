@@ -80,7 +80,7 @@ export DRAPE_API_KEY=drp_org_xxxx
 
 ### `drape upload tests <glob>`
 
-Upload JUnit XML (or CTRF) test results. Supports glob patterns.
+Upload JUnit XML test results. Supports glob patterns.
 
 ```bash
 drape upload tests "./reports/**/*.xml" \
@@ -184,7 +184,7 @@ Print CLI version information.
 | `--api-key` | `DRAPE_API_KEY` | API key (optional in GitHub Actions with `id-token: write`) |
 | `--api-url` | `DRAPE_API_URL` | API base URL (default: `https://app.drape.io`) |
 | `--verbose` | | Enable verbose logging |
-| `--dry-run` | | Parse and validate locally, don't upload |
+| `--dry-run` | | Check the reports locally against `--format`, don't upload. `upload tests` parses each JUnit file in full; coverage, lint and scan check that each file is well-formed and has the format's shape. An unsupported `--format` exits 2 |
 
 ## Exit Codes
 

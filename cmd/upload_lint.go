@@ -29,6 +29,10 @@ func init() {
 }
 
 func runUploadLint(cmd *cobra.Command, args []string) error {
+	if err := checkChoice("--format", flagLintFormat, lintFormats); err != nil {
+		return err
+	}
+
 	filePath := filepath.Clean(args[0])
 	filename := filepath.Base(filePath)
 
@@ -44,8 +48,7 @@ func runUploadLint(cmd *cobra.Command, args []string) error {
 	}
 
 	if flagDryRun {
-		ctx.dryRunSimple([]string{filePath}, flagLintFormat)
-		return nil
+		return ctx.dryRunCheck([]string{filePath}, flagLintFormat)
 	}
 
 	if err := ctx.resolveClient(); err != nil {
