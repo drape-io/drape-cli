@@ -86,11 +86,14 @@ func (g *GitHubActions) fetch() (string, time.Time, error) {
 		return "", time.Time{}, fmt.Errorf("requesting a GitHub Actions token: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if resp.StatusCode != http.StatusOK {
 		// The body is GitHub's error message, never a token.
 		return "", time.Time{}, fmt.Errorf("GitHub didn't issue a token (HTTP %d): %s",
 			resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("reading GitHub's token response: %w", err)
 	}
 
 	var issued struct {

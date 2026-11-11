@@ -111,3 +111,23 @@ func TestGitHubRefusingIsAnErrorWithItsMessage(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestACutOffResponseIsAReadError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		_, _ = w.Write([]byte(`{"value":`))
+	}))
+	t.Cleanup(server.Close)
+	src, _ := GitHubActionsFromEnv(func(key string) string {
+		return map[string]string{
+			"ACTIONS_ID_TOKEN_REQUEST_URL":   server.URL,
+			"ACTIONS_ID_TOKEN_REQUEST_TOKEN": "runner-secret",
+		}[key]
+	}, "https://app.drape.io")
+
+	_, err := src.Token()
+
+	if err == nil || !strings.Contains(err.Error(), "reading GitHub's token response") {
+		t.Fatalf("err = %v", err)
+	}
+}
