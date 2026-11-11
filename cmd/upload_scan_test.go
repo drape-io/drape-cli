@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/drape-io/drape-cli/internal/api"
+	"github.com/drape-io/drape-cli/internal/exitcode"
 	"github.com/drape-io/drape-cli/internal/output"
 )
 
@@ -83,7 +85,7 @@ func TestPrintScanDiffPassMessageCoversAllNonBlockingCVEs(t *testing.T) {
 				SuppressedCVECount: tt.suppressed,
 				NonActionableCount: tt.nonActionable,
 			}
-			if err := printScanDiff(diff, 0); err != nil {
+			if err := printScanDiff(diff, 0, ""); err != nil {
 				t.Fatalf("printScanDiff() error: %v", err)
 			}
 
@@ -161,7 +163,7 @@ func TestPrintScanDiffListsExistingActionableCVEs(t *testing.T) {
 			{CVEID: "CVE-2026-0001", Severity: "high", PackageName: "zlib1g", PackageVersion: "1.3", FixState: "not-fixed"},
 		},
 	}
-	if err := printScanDiff(diff, 0); err != nil {
+	if err := printScanDiff(diff, 0, ""); err != nil {
 		t.Fatalf("printScanDiff() error: %v", err)
 	}
 
@@ -196,7 +198,7 @@ func TestPrintScanDiffPrefersPerCVECounts(t *testing.T) {
 			{CVEID: "CVE-2026-0009", PackageName: "openssl"},
 		},
 	}
-	_ = printScanDiff(diff, 0)
+	_ = printScanDiff(diff, 0, "")
 
 	got := buf.String()
 	for _, want := range []string{
@@ -242,5 +244,35 @@ func TestPrintScanSummaryShowsTheRepository(t *testing.T) {
 	want := "  Repository:      acme/app (main): 9 to fix (7 past SLA), 15 with no fix, 2 suppressed"
 	if !strings.Contains(buf.String(), want) {
 		t.Errorf("missing repository line %q\nGot:\n%s", want, buf.String())
+	}
+}
+
+// When the server's check passes but --fail-on-vulnerabilities fails the run,
+// the diff must not print PASSED right before the run fails.
+func TestPrintScanDiffShowsTheSeverityGateFailing(t *testing.T) {
+	var buf bytes.Buffer
+	output.Stdout = &buf
+	defer output.Reset()
+
+	diff := &api.ScanDiffInfo{Passed: true, NewHighCount: 1, FailureReasons: []string{"no baseline scan"}}
+	err := printScanDiff(diff, 0, "new vulnerabilities at or above medium (--fail-on-vulnerabilities)")
+
+	got := buf.String()
+	if strings.Contains(got, "PASSED") {
+		t.Errorf("printed PASSED for a run the severity gate fails:\n%s", got)
+	}
+	if !strings.Contains(got, "Result:    FAILED") || !strings.Contains(got, "--fail-on-vulnerabilities") {
+		t.Errorf("should print FAILED with the gate as the reason:\n%s", got)
+	}
+	// The server passed, so its reasons are notes, not why the run failed.
+	if !strings.Contains(got, "Note: no baseline scan") || strings.Contains(got, "- no baseline scan") {
+		t.Errorf("a passing diff's reasons should print as notes:\n%s", got)
+	}
+	var exitErr *ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != exitcode.ScanFailure {
+		t.Fatalf("err = %v, want exit %d", err, exitcode.ScanFailure)
+	}
+	if !strings.Contains(exitErr.Err.Error(), "--fail-on-vulnerabilities") {
+		t.Errorf("the final error should name the gate, got %q", exitErr.Err)
 	}
 }

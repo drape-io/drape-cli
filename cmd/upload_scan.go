@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -147,12 +148,16 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 
 		printScanSummary(u.Filename, status)
 
-		if flagScanFailOnVulns {
-			hasUnsuppressedVulns = hasUnsuppressedVulns || scanFailsOnVulns(status, flagScanFailOnSeverity)
+		// The gate is decided before the diff prints, so the diff's result
+		// line can't say PASSED for an upload the gate fails.
+		var gateFailure string
+		if flagScanFailOnVulns && scanFailsOnVulns(status, flagScanFailOnSeverity) {
+			hasUnsuppressedVulns = true
+			gateFailure = fmt.Sprintf("new unsuppressed vulnerabilities at or above %s found (--fail-on-vulnerabilities)", flagScanFailOnSeverity)
 		}
 
 		if status.ScanDiff != nil {
-			if err := printScanDiff(status.ScanDiff, ctx.prNumber); err != nil {
+			if err := printScanDiff(status.ScanDiff, ctx.prNumber, gateFailure); err != nil {
 				lastDiffErr = err
 			}
 		}
@@ -316,7 +321,10 @@ func summaryCounts(diff *api.ScanDiffInfo) diffCounts {
 	}
 }
 
-func printScanDiff(diff *api.ScanDiffInfo, prNumber int) error {
+// printScanDiff prints the server's scan diff and fails on its check. A
+// non-empty gateFailure is why --fail-on-vulnerabilities fails this upload;
+// it turns a passing check into FAILED so the result matches the exit code.
+func printScanDiff(diff *api.ScanDiffInfo, prNumber int, gateFailure string) error {
 	output.Info("")
 	if prNumber > 0 {
 		output.Info("Scan Diff (PR #%d)", prNumber)
@@ -375,7 +383,7 @@ func printScanDiff(diff *api.ScanDiffInfo, prNumber int) error {
 		}
 	}
 
-	if diff.Passed {
+	if diff.Passed && gateFailure == "" {
 		output.Info("  Result:    PASSED")
 		// Every non-blocking bucket, not just suppressions: won't-fix CVEs
 		// are listed above too, so naming only the suppressed count
@@ -386,6 +394,16 @@ func printScanDiff(diff *api.ScanDiffInfo, prNumber int) error {
 		}
 	} else {
 		output.Info("  Result:    FAILED")
+		if gateFailure != "" {
+			output.Info("    - %s", gateFailure)
+		}
+		if diff.Passed {
+			// Only the gate failed; the server's reasons are still just notes.
+			for _, reason := range diff.FailureReasons {
+				output.Info("  Note: %s", reason)
+			}
+			return &ExitError{Code: exitcode.ScanFailure, Err: errors.New(gateFailure)}
+		}
 		for _, reason := range diff.FailureReasons {
 			output.Info("    - %s", reason)
 		}
