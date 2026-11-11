@@ -193,10 +193,16 @@ Print CLI version information.
 | 0 | Success |
 | 1 | Test failure (unsuppressed failures exist) |
 | 2 | Usage error (invalid flags, missing required args) |
-| 3 | Upload error (network, auth, or API error) |
+| 3 | Upload error (network, auth, or API error, or a file that failed to upload or process) |
 | 4 | Timeout (server processing took too long) |
 | 5 | Parse error (couldn't parse input files) |
 | 6 | Coverage regression (coverage diff check failed) |
+| 7 | Lint failure (lint diff check failed) |
+| 8 | Scan failure (scan diff check or `--fail-on-vulnerabilities` failed) |
+
+When `upload tests` or `upload scan` is given several files, the run passes only if every one was uploaded and processed. If one can't be read, uploaded or processed, the run exits 3 even if the others succeeded (or 4 if processing timed out), so a report that was never checked can't leave CI green. An unsuppressed test failure (1) or a failed scan check (8) is reported ahead of it. A multi-file `upload coverage` already fails when any of its files fails to upload, except with `--total-shards`, where sibling jobs can still complete the batch (see above).
+
+With `--json`, a result is printed on failure and timeout too: each upload carries an `error` when its processing failed or timed out, and `failures` lists files that couldn't be read or uploaded, with the reason. Files the server refused for billing are covered by the `billing` field instead.
 
 Billing never fails your CI. If your organization's Drape access has ended, the server refuses the upload, and the CLI prints a warning with a link to restore access and exits 0. If access ends partway through a run, results already saved are still checked as usual: failing tests, a coverage regression, lint violations or new vulnerabilities in them still fail the run, and nothing else does. With `--json`, the result has a `billing` field saying what was refused. On GitHub Actions the warning also appears as an annotation on the run. While access is about to end (a trial ending, a payment past due), uploads still work and the CLI prints a warning with the days left.
 

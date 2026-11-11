@@ -11,54 +11,62 @@ func TestTestUploadExitError(t *testing.T) {
 		name                      string
 		totalFailed               int
 		totalUnsuppressedFailures int
-		processingErrors          int
-		totalIngested             int
+		failedFiles               int
+		totalFiles                int
 		wantNil                   bool
 		wantCode                  int
 	}{
 		{
-			name:    "no failures returns nil",
-			wantNil: true,
+			name:       "no failures returns nil",
+			totalFiles: 2,
+			wantNil:    true,
 		},
 		{
 			name:                      "all failures suppressed returns nil",
 			totalFailed:               5,
 			totalUnsuppressedFailures: 0,
-			totalIngested:             100,
+			totalFiles:                2,
 			wantNil:                   true,
 		},
 		{
 			name:                      "unsuppressed failures returns TestFailure",
 			totalFailed:               5,
 			totalUnsuppressedFailures: 3,
-			totalIngested:             100,
+			totalFiles:                2,
 			wantCode:                  exitcode.TestFailure,
 		},
 		{
-			name:             "all processing failed returns UploadError",
-			processingErrors: 2,
-			totalIngested:    0,
-			wantCode:         exitcode.UploadError,
+			name:        "every file failing returns UploadError",
+			failedFiles: 2,
+			totalFiles:  2,
+			wantCode:    exitcode.UploadError,
 		},
 		{
-			name:             "partial processing failure with ingested tests returns nil",
-			processingErrors: 1,
-			totalIngested:    50,
-			wantNil:          true,
+			name:        "one file failing returns UploadError though others ingested",
+			failedFiles: 1,
+			totalFiles:  2,
+			wantCode:    exitcode.UploadError,
 		},
 		{
-			name:                      "unsuppressed failures take precedence over partial processing errors",
+			name:        "a failed file with all test failures suppressed returns UploadError",
+			totalFailed: 3,
+			failedFiles: 1,
+			totalFiles:  2,
+			wantCode:    exitcode.UploadError,
+		},
+		{
+			name:                      "unsuppressed failures take precedence over failed files",
 			totalFailed:               3,
 			totalUnsuppressedFailures: 2,
-			processingErrors:          1,
-			totalIngested:             50,
+			failedFiles:               1,
+			totalFiles:                2,
 			wantCode:                  exitcode.TestFailure,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := testUploadExitError(tt.totalFailed, tt.totalUnsuppressedFailures, tt.processingErrors, tt.totalIngested)
+			err := testUploadExitError(tt.totalFailed, tt.totalUnsuppressedFailures, tt.failedFiles, tt.totalFiles)
 			if tt.wantNil {
 				if err != nil {
 					t.Errorf("expected nil, got %v", err)

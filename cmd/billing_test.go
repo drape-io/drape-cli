@@ -215,6 +215,21 @@ func TestARefusalAfterSomeUploadsSaysSomeWereSaved(t *testing.T) {
 	}
 }
 
+// When access ends partway, the files after the refused one weren't saved
+// either, so the run counts them as not uploaded.
+func TestARefusalPartwayCountsEveryUnsavedFile(t *testing.T) {
+	server := drapeServer(t, savesFirst())
+
+	code, stderr := run(t, server, "tests", 3, false)
+
+	if code != exitcode.Success {
+		t.Errorf("exit code = %d, want %d", code, exitcode.Success)
+	}
+	if !strings.Contains(stderr, "2 of 3 file(s)") {
+		t.Errorf("stderr should count both unsaved files:\n%s", stderr)
+	}
+}
+
 // savesFirst accepts the first upload and refuses the rest.
 func savesFirst() http.HandlerFunc {
 	var initiated int

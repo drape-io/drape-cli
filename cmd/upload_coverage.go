@@ -188,10 +188,11 @@ func runSingleCoverageUpload(ctx *uploadContext, filePath string, metadata map[s
 	output.Info("Waiting for processing (timeout: %s)...", flagUploadWaitTimeout)
 	status, err := ctx.client.PollCoverageStatus(ctx.orgSlug, ctx.repoID, uploadID, flagUploadWaitTimeout)
 	if err != nil {
-		if status != nil && status.Status == "failed" {
-			return &ExitError{Code: exitcode.UploadError, Err: err}
+		failed := status != nil && status.Status == "failed"
+		if failed {
+			result.Uploads[0].Result = status
 		}
-		return &ExitError{Code: exitcode.Timeout, Err: err}
+		return failedAfterUpload(result, 0, failed, err)
 	}
 
 	result.Uploads[0].Result = status
@@ -230,9 +231,9 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 
 	batchID := batchResp.BatchID
 	result, uploadErrors := ctx.uploadFiles("coverage", files, func(_ string) map[string]any { return metadata }, &batchID)
+	setResult(result)
 	if refused := api.PaymentRequired(); refused != nil {
 		// A batch missing files has no result to check: end with the refusal, which exits 0.
-		setResult(result)
 		return &ExitError{Code: exitcode.UploadError, Err: refused}
 	}
 	if err := checkAllFailed(uploadErrors, result.Uploads); err != nil {
@@ -246,7 +247,6 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 		// expected_count, so fail early instead of polling a doomed batch.
 		// (In batch-join mode, sibling shards from other CI jobs may still
 		// finalize it — don't short-circuit on our local failures.)
-		setResult(result)
 		return &ExitError{
 			Code: exitcode.UploadError,
 			Err: fmt.Errorf("%d of %d file(s) failed to upload; batch %d cannot complete",
@@ -255,7 +255,6 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 	}
 
 	if !flagUploadWait {
-		setResult(result)
 		return nil
 	}
 
@@ -263,13 +262,20 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 
 	batchStatus, err := ctx.client.PollCoverageBatchStatus(ctx.orgSlug, ctx.repoID, batchResp.BatchID, flagUploadWaitTimeout)
 	if err != nil {
-		if batchStatus != nil && batchStatus.Status == "failed" {
-			return &ExitError{Code: exitcode.UploadError, Err: err}
+		// A batch's outcome is reported on its first upload, as on success.
+		failed := batchStatus != nil && batchStatus.Status == "failed"
+		if failed {
+			result.Uploads[0].Result = batchCoverageStatus(batchStatus)
 		}
-		return &ExitError{Code: exitcode.Timeout, Err: err}
+		return failedAfterUpload(result, 0, failed, err)
 	}
 
 	return renderBatchResult(result, batchStatus, ctx.prNumber)
+}
+
+// batchCoverageStatus reports a batch's outcome in the shape of a single coverage upload's.
+func batchCoverageStatus(s *api.CoverageBatchStatusResponse) *api.CoverageStatusResponse {
+	return &api.CoverageStatusResponse{Status: s.Status, ErrorMessage: s.ErrorMessage, CoverageResult: s.CoverageResult}
 }
 
 // renderBatchResult maps the batch status to the CLI's JSON output shape,
@@ -277,11 +283,7 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 // coverage regression). Surfaces the partial-coverage warning when the
 // server-side reaper finalized the batch with fewer than expected_count shards.
 func renderBatchResult(result UploadResult, batchStatus *api.CoverageBatchStatusResponse, prNumber int) error {
-	batchCovStatus := &api.CoverageStatusResponse{
-		Status:         batchStatus.Status,
-		ErrorMessage:   batchStatus.ErrorMessage,
-		CoverageResult: batchStatus.CoverageResult,
-	}
+	batchCovStatus := batchCoverageStatus(batchStatus)
 
 	if len(result.Uploads) > 0 {
 		result.Uploads[0].Result = batchCovStatus

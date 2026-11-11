@@ -102,6 +102,7 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 
 	// Upload each file
 	result, uploadErrors := ctx.uploadFiles("test_results", files, func(_ string) map[string]any { return metadata }, nil)
+	setResult(result)
 	if err := checkAllFailed(uploadErrors, result.Uploads); err != nil {
 		return err
 	}
@@ -112,8 +113,7 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 		for _, u := range result.Uploads {
 			output.Info("  %s: processing (ID: %d)", u.Filename, u.UploadID)
 		}
-		setResult(result)
-		return nil
+		return incompleteError(uploadErrors, len(files))
 	}
 
 	output.Info("Waiting for processing (timeout: %s)...", flagUploadWaitTimeout)
@@ -131,10 +131,11 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 			if status != nil && status.Status == "failed" {
 				output.Error("  %s: processing failed: %v", u.Filename, err)
 				result.Uploads[i].Result = status
+				result.Uploads[i].Error = err.Error()
 				processingErrors++
 				continue
 			}
-			return &ExitError{Code: exitcode.Timeout, Err: err}
+			return failedAfterUpload(result, i, false, err)
 		}
 
 		result.Uploads[i].Result = status
@@ -211,23 +212,24 @@ func runUploadTests(cmd *cobra.Command, args []string) error {
 		output.Info("Consider burn-in via Drape dashboard to verify stability.")
 	}
 
-	return testUploadExitError(totalFailed, totalUnsuppressedFailures, processingErrors, totalIngested)
+	return testUploadExitError(totalFailed, totalUnsuppressedFailures, uploadErrors+processingErrors, len(files))
 }
 
-// testUploadExitError determines the exit code after test upload processing.
-func testUploadExitError(totalFailed, totalUnsuppressedFailures, processingErrors, totalIngested int) error {
-	if totalFailed > 0 && totalUnsuppressedFailures == 0 {
-		output.Info("")
-		output.Info("All %d failure(s) are suppressed — passing CI", totalFailed)
-		return nil
-	}
-
-	if processingErrors > 0 && totalIngested == 0 {
-		return &ExitError{Code: exitcode.UploadError, Err: fmt.Errorf("all processing failed")}
-	}
-
+// testUploadExitError determines the exit code after test upload processing:
+// an unsuppressed test failure first, then any file that wasn't uploaded or
+// processed, since its tests were never checked.
+func testUploadExitError(totalFailed, totalUnsuppressedFailures, failedFiles, totalFiles int) error {
 	if totalUnsuppressedFailures > 0 {
 		return &ExitError{Code: exitcode.TestFailure, Err: fmt.Errorf("%d unsuppressed test failure(s)", totalUnsuppressedFailures)}
+	}
+
+	if err := incompleteError(failedFiles, totalFiles); err != nil {
+		return err
+	}
+
+	if totalFailed > 0 {
+		output.Info("")
+		output.Info("All %d failure(s) are suppressed — passing CI", totalFailed)
 	}
 
 	return nil

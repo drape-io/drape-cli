@@ -2,9 +2,11 @@ package api
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/drape-io/drape-cli/internal/output"
@@ -63,6 +65,12 @@ func (c *Client) UploadToPresignedURL(presignedURL string, content []byte) error
 
 	resp, err := c.doWithRetries(req)
 	if err != nil {
+		// The URL's query string is a signed credential; keep it out of logs and --json.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			return fmt.Errorf("uploading to presigned URL %s://%s%s: %w",
+				req.URL.Scheme, req.URL.Host, req.URL.Path, urlErr.Err)
+		}
 		return fmt.Errorf("uploading to presigned URL: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
