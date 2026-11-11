@@ -24,9 +24,8 @@ var (
 )
 
 // newClient creates an API client from global flags, resolving env var defaults. An API key
-// wins; without one, a GitHub Actions job allowed to mint OIDC tokens uses those. The bool says
-// whether the client authenticates as GitHub Actions.
-func newClient() (*api.Client, bool, error) {
+// wins; without one, a GitHub Actions job allowed to mint OIDC tokens uses those.
+func newClient() (*api.Client, error) {
 	apiURL := resolveFlag(flagAPIURL, "DRAPE_API_URL")
 	if apiURL == "" {
 		apiURL = defaultAPIURL
@@ -37,21 +36,21 @@ func newClient() (*api.Client, bool, error) {
 	if apiKey == "" {
 		audience, err := audienceFor(apiURL)
 		if err != nil {
-			return nil, false, &ExitError{Code: exitcode.UsageError, Err: err}
+			return nil, &ExitError{Code: exitcode.UsageError, Err: err}
 		}
 		source, ok := oidc.GitHubActionsFromEnv(os.Getenv, audience)
 		if !ok {
-			return nil, false, &ExitError{Code: exitcode.UsageError, Err: missingCredential(os.Getenv)}
+			return nil, &ExitError{Code: exitcode.UsageError, Err: missingCredential(os.Getenv)}
 		}
 		tokens = source
 	}
 
 	client, err := api.NewClient(apiURL, apiKey)
 	if err != nil {
-		return nil, false, &ExitError{Code: exitcode.UsageError, Err: err}
+		return nil, &ExitError{Code: exitcode.UsageError, Err: err}
 	}
 	client.Tokens = tokens
-	return client, tokens != nil, nil
+	return client, nil
 }
 
 // audienceFor is the OIDC audience Drape expects: its origin, without a path or trailing slash.
@@ -77,26 +76,23 @@ func missingCredential(getenv func(string) string) error {
 // isForkPullRequest reports whether this GitHub Actions run is for a pull request from a fork,
 // which GitHub gives neither secrets nor an id-token.
 func isForkPullRequest(getenv func(string) string) bool {
-	if !strings.HasPrefix(getenv("GITHUB_EVENT_NAME"), "pull_request") ||
-		getenv("GITHUB_EVENT_NAME") == "pull_request_target" {
+	eventName := getenv("GITHUB_EVENT_NAME")
+	if !strings.HasPrefix(eventName, "pull_request") || eventName == "pull_request_target" {
 		return false
 	}
 	data, err := os.ReadFile(getenv("GITHUB_EVENT_PATH"))
 	if err != nil {
 		return false
 	}
+	type side struct {
+		Repo struct {
+			FullName string `json:"full_name"`
+		} `json:"repo"`
+	}
 	var event struct {
 		PullRequest struct {
-			Head struct {
-				Repo struct {
-					FullName string `json:"full_name"`
-				} `json:"repo"`
-			} `json:"head"`
-			Base struct {
-				Repo struct {
-					FullName string `json:"full_name"`
-				} `json:"repo"`
-			} `json:"base"`
+			Head side `json:"head"`
+			Base side `json:"base"`
 		} `json:"pull_request"`
 	}
 	if json.Unmarshal(data, &event) != nil {

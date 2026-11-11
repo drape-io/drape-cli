@@ -37,7 +37,7 @@ func newFakeGitHub(t *testing.T) *fakeGitHub {
 			return
 		}
 		token := jwtExpiring(f.now.Add(f.expiresIn))
-		_, _ = fmt.Fprintf(w, `{"count":%d,"value":%q}`, len(f.requests), token)
+		_, _ = fmt.Fprintf(w, `{"value":%q}`, token)
 	}))
 	t.Cleanup(f.server.Close)
 	return f

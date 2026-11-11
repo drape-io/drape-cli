@@ -71,6 +71,15 @@ func newUploadContext() (*uploadContext, error) {
 // resolveClient sets up the API client, org, and repo. Must be called before
 // uploadFile or any network operations. Skipped during dry-run.
 func (ctx *uploadContext) resolveClient() error {
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	if client.Tokens != nil {
+		return ctx.resolveGitHubActions(client)
+	}
+	output.Info("Authenticated with an API key")
+
 	// Extract org/repo from CI-detected RepoSlug as fallback values.
 	var ciOrg, ciRepo string
 	if ctx.ci != nil && ctx.ci.RepoSlug != "" {
@@ -79,15 +88,6 @@ func (ctx *uploadContext) resolveClient() error {
 			ciRepo = parts[1]
 		}
 	}
-
-	client, github, err := newClient()
-	if err != nil {
-		return err
-	}
-	if github {
-		return ctx.resolveGitHubActions(client)
-	}
-	output.Info("Authenticated with an API key")
 
 	orgSlug, err := resolveOrg(ciOrg)
 	if err != nil {

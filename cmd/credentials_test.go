@@ -158,10 +158,8 @@ func uploadLintAs(t *testing.T, server *httptest.Server, extra ...string) (int, 
 	t.Cleanup(output.Reset)
 	t.Cleanup(func() { flagAPIKey, flagOrg, flagRepo, flagVerbose = "", "", "", false })
 	flagAPIKey, flagOrg, flagRepo = "", "", ""
-	args := make([]string, 0, 10+len(extra))
-	args = append(args, "upload", "lint", report, "--api-url", server.URL,
-		"--branch", "main", "--sha", "abc123", "--wait=false")
-	rootCmd.SetArgs(append(args, extra...))
+	rootCmd.SetArgs(append([]string{"upload", "lint", report, "--api-url", server.URL,
+		"--branch", "main", "--sha", "abc123", "--wait=false"}, extra...))
 	return Execute(), printed.String()
 }
 
