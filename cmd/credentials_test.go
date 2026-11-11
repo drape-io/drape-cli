@@ -14,11 +14,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/drape-io/drape-cli/internal/cidetect"
 	"github.com/drape-io/drape-cli/internal/exitcode"
 	"github.com/drape-io/drape-cli/internal/output"
 )
 
-func env(vars map[string]string) func(string) string {
+func env(vars map[string]string) cidetect.EnvFunc {
 	return func(key string) string { return vars[key] }
 }
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/drape-io/drape-cli/internal/api"
+	"github.com/drape-io/drape-cli/internal/cidetect"
 	"github.com/drape-io/drape-cli/internal/exitcode"
 	"github.com/drape-io/drape-cli/internal/oidc"
 )
@@ -63,7 +64,7 @@ func audienceFor(apiURL string) (string, error) {
 }
 
 // missingCredential says what to do when there's neither an API key nor a GitHub token to use.
-func missingCredential(getenv func(string) string) error {
+func missingCredential(getenv cidetect.EnvFunc) error {
 	if getenv("GITHUB_ACTIONS") != "true" {
 		return errMissing("--api-key or DRAPE_API_KEY")
 	}
@@ -75,7 +76,7 @@ func missingCredential(getenv func(string) string) error {
 
 // isForkPullRequest reports whether this GitHub Actions run is for a pull request from a fork,
 // which GitHub gives neither secrets nor an id-token.
-func isForkPullRequest(getenv func(string) string) bool {
+func isForkPullRequest(getenv cidetect.EnvFunc) bool {
 	eventName := getenv("GITHUB_EVENT_NAME")
 	if !strings.HasPrefix(eventName, "pull_request") || eventName == "pull_request_target" {
 		return false
