@@ -29,7 +29,7 @@ var uploadTestsCmd = &cobra.Command{
 }
 
 func init() {
-	uploadTestsCmd.Flags().StringVar(&flagTestFormat, "format", "", "Force format (junit, ctrf). Default: auto-detect")
+	uploadTestsCmd.Flags().StringVar(&flagTestFormat, "format", "", "Test result format: junit (default: auto-detect)")
 	uploadTestsCmd.Flags().StringVar(&flagTestJobName, "job-name", "", "CI job name (auto-detected from CI)")
 	uploadTestsCmd.Flags().IntVar(&flagTestPRNumber, "pr-number", 0, "PR number (auto-detected from CI)")
 	uploadTestsCmd.Flags().StringVar(&flagTestRunDate, "run-date", "", "ISO 8601 date for historical uploads (e.g. 2026-03-15)")
@@ -40,6 +40,12 @@ func init() {
 }
 
 func runUploadTests(cmd *cobra.Command, args []string) error {
+	if flagTestFormat != "" {
+		if err := checkFormat(flagTestFormat, testFormats); err != nil {
+			return err
+		}
+	}
+
 	files, err := expandGlobs(args)
 	if err != nil {
 		return &ExitError{Code: exitcode.UsageError, Err: err}
