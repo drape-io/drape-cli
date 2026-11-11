@@ -2,6 +2,8 @@ package api
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -122,5 +124,27 @@ func TestPollWithBackoff_FetchErrorPropagates(t *testing.T) {
 	err := c.pollWithBackoff(time.Second, "Batch", fetchFn)
 	if !errors.Is(err, boom) {
 		t.Errorf("expected wrapped fetch error %v, got %v", boom, err)
+	}
+}
+
+// A presigned URL's query string is a credential, so a failed PUT must not echo it.
+func TestFailedPresignedUploadHidesTheSignature(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	unreachable := server.URL + "/bucket/key?X-Amz-Signature=s3cr3t&X-Amz-Credential=AKIA"
+	server.Close()
+
+	client, err := NewClient(server.URL, "test-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = client.UploadToPresignedURL(unreachable, []byte("report"))
+	if err == nil {
+		t.Fatal("expected an error uploading to a closed server")
+	}
+	if strings.Contains(err.Error(), "s3cr3t") || strings.Contains(err.Error(), "AKIA") {
+		t.Errorf("error leaks the presigned URL's signature: %v", err)
+	}
+	if !strings.Contains(err.Error(), "/bucket/key") {
+		t.Errorf("error should still name the URL path: %v", err)
 	}
 }

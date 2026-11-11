@@ -175,13 +175,14 @@ func (ctx *uploadContext) drapeURL() string {
 // metadataFn is called per file to allow per-file metadata (e.g. scan) or static metadata.
 // Pass batchID to associate all uploads with a batch, or nil for standalone uploads.
 func (ctx *uploadContext) uploadFiles(uploadType string, files []string, metadataFn func(string) map[string]any, batchID *int) (UploadResult, int) {
-	result := UploadResult{FilesMatched: len(files)}
+	result := UploadResult{FilesMatched: len(files), Uploads: []UploadEntry{}}
 	var uploadErrors int
 
-	for _, f := range files {
+	for i, f := range files {
 		data, err := os.ReadFile(filepath.Clean(f)) //nolint:gosec // G304: path is from CLI args + glob expansion
 		if err != nil {
 			output.Error("Failed to read %s: %v", f, err)
+			result.Failures = append(result.Failures, UploadFailure{Filename: filepath.Base(f), Error: err.Error()})
 			uploadErrors++
 			continue
 		}
@@ -193,11 +194,13 @@ func (ctx *uploadContext) uploadFiles(uploadType string, files []string, metadat
 		uploadID, err := ctx.uploadFile(uploadType, filename, data, metadata, batchID)
 		if api.PaymentRequired() != nil {
 			// Every other file would be refused the same way; Execute says why, once.
-			uploadErrors++
+			// This file and the ones after it weren't saved.
+			uploadErrors += len(files) - i
 			break
 		}
 		if err != nil {
 			output.Error("Failed to upload %s: %v", filename, err)
+			result.Failures = append(result.Failures, UploadFailure{Filename: filename, Error: err.Error()})
 			uploadErrors++
 			continue
 		}
@@ -208,6 +211,26 @@ func (ctx *uploadContext) uploadFiles(uploadType string, files []string, metadat
 
 	result.FilesUploaded = len(result.Uploads)
 	return result, uploadErrors
+}
+
+// failedAfterUpload records why upload i failed to process or timed out,
+// prints the result so the upload ID isn't lost, and returns the exit error.
+func failedAfterUpload(result UploadResult, i int, processingFailed bool, err error) error {
+	result.Uploads[i].Error = err.Error()
+	setResult(result)
+	if processingFailed {
+		return &ExitError{Code: exitcode.UploadError, Err: err}
+	}
+	return &ExitError{Code: exitcode.Timeout, Err: err}
+}
+
+// incompleteError fails a run in which any file wasn't uploaded or processed,
+// so a green run means every report was read.
+func incompleteError(failed, total int) error {
+	if failed == 0 {
+		return nil
+	}
+	return &ExitError{Code: exitcode.UploadError, Err: fmt.Errorf("%d of %d file(s) failed to upload or process", failed, total)}
 }
 
 // checkAllFailed returns an ExitError if every upload failed.

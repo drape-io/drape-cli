@@ -189,9 +189,9 @@ func runSingleCoverageUpload(ctx *uploadContext, filePath string, metadata map[s
 	status, err := ctx.client.PollCoverageStatus(ctx.orgSlug, ctx.repoID, uploadID, flagUploadWaitTimeout)
 	if err != nil {
 		if status != nil && status.Status == "failed" {
-			return &ExitError{Code: exitcode.UploadError, Err: err}
+			return failedAfterUpload(result, 0, true, err)
 		}
-		return &ExitError{Code: exitcode.Timeout, Err: err}
+		return failedAfterUpload(result, 0, false, err)
 	}
 
 	result.Uploads[0].Result = status
@@ -230,9 +230,9 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 
 	batchID := batchResp.BatchID
 	result, uploadErrors := ctx.uploadFiles("coverage", files, func(_ string) map[string]any { return metadata }, &batchID)
+	setResult(result)
 	if refused := api.PaymentRequired(); refused != nil {
 		// A batch missing files has no result to check: end with the refusal, which exits 0.
-		setResult(result)
 		return &ExitError{Code: exitcode.UploadError, Err: refused}
 	}
 	if err := checkAllFailed(uploadErrors, result.Uploads); err != nil {
@@ -246,7 +246,6 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 		// expected_count, so fail early instead of polling a doomed batch.
 		// (In batch-join mode, sibling shards from other CI jobs may still
 		// finalize it — don't short-circuit on our local failures.)
-		setResult(result)
 		return &ExitError{
 			Code: exitcode.UploadError,
 			Err: fmt.Errorf("%d of %d file(s) failed to upload; batch %d cannot complete",
@@ -255,7 +254,6 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 	}
 
 	if !flagUploadWait {
-		setResult(result)
 		return nil
 	}
 
@@ -263,10 +261,11 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 
 	batchStatus, err := ctx.client.PollCoverageBatchStatus(ctx.orgSlug, ctx.repoID, batchResp.BatchID, flagUploadWaitTimeout)
 	if err != nil {
+		// A batch's outcome is reported on its first upload, as on success.
 		if batchStatus != nil && batchStatus.Status == "failed" {
-			return &ExitError{Code: exitcode.UploadError, Err: err}
+			return failedAfterUpload(result, 0, true, err)
 		}
-		return &ExitError{Code: exitcode.Timeout, Err: err}
+		return failedAfterUpload(result, 0, false, err)
 	}
 
 	return renderBatchResult(result, batchStatus, ctx.prNumber)

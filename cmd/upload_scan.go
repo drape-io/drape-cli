@@ -107,6 +107,7 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 		}
 		return metadata
 	}, nil)
+	setResult(result)
 	if err := checkAllFailed(uploadErrors, result.Uploads); err != nil {
 		return err
 	}
@@ -117,8 +118,7 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 		for _, u := range result.Uploads {
 			output.Info("  %s: processing (ID: %d)", u.Filename, u.UploadID)
 		}
-		setResult(result)
-		return nil
+		return incompleteError(uploadErrors, len(files))
 	}
 
 	output.Info("Waiting for processing (timeout: %s)...", flagUploadWaitTimeout)
@@ -133,10 +133,11 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 			if status != nil && status.Status == "failed" {
 				output.Error("  %s: processing failed: %v", u.Filename, err)
 				result.Uploads[i].Result = status
+				result.Uploads[i].Error = err.Error()
 				processingErrors++
 				continue
 			}
-			return &ExitError{Code: exitcode.Timeout, Err: err}
+			return failedAfterUpload(result, i, false, err)
 		}
 
 		result.Uploads[i].Result = status
@@ -165,10 +166,6 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 		output.Info("Process errors: %d", processingErrors)
 	}
 
-	if processingErrors > 0 && len(result.Uploads) == processingErrors {
-		return &ExitError{Code: exitcode.UploadError, Err: fmt.Errorf("all processing failed")}
-	}
-
 	// Always set result so JSON is emitted even on policy failure
 	setResult(result)
 
@@ -180,7 +177,7 @@ func runUploadScan(cmd *cobra.Command, args []string) error {
 		return &ExitError{Code: exitcode.ScanFailure, Err: fmt.Errorf("new unsuppressed vulnerabilities at or above %s found", flagScanFailOnSeverity)}
 	}
 
-	return nil
+	return incompleteError(uploadErrors+processingErrors, len(files))
 }
 
 func printScanSummary(filename string, status *api.ScanStatusResponse) {

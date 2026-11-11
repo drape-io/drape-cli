@@ -7,6 +7,8 @@ type UploadResult struct {
 	Uploads       []UploadEntry `json:"uploads"`
 	FilesMatched  int           `json:"files_matched"`
 	FilesUploaded int           `json:"files_uploaded"`
+	// Failures lists the files that couldn't be read or uploaded.
+	Failures []UploadFailure `json:"failures,omitempty"`
 	// Billing is set when the server refused uploads because the organization's access ended.
 	Billing *BillingResult `json:"billing,omitempty"`
 }
@@ -25,6 +27,14 @@ type UploadEntry struct {
 	UploadID int    `json:"upload_id"`
 	DrapeURL string `json:"drape_url,omitempty"`
 	Result   any    `json:"result,omitempty"`
+	// Error says why the upload failed or timed out after it was saved.
+	Error string `json:"error,omitempty"`
+}
+
+// UploadFailure is a file that was never uploaded, and why.
+type UploadFailure struct {
+	Filename string `json:"filename"`
+	Error    string `json:"error"`
 }
 
 // DryRunResult is the JSON output for commands run with --dry-run.
