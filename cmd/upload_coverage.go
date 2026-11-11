@@ -188,11 +188,7 @@ func runSingleCoverageUpload(ctx *uploadContext, filePath string, metadata map[s
 	output.Info("Waiting for processing (timeout: %s)...", flagUploadWaitTimeout)
 	status, err := ctx.client.PollCoverageStatus(ctx.orgSlug, ctx.repoID, uploadID, flagUploadWaitTimeout)
 	if err != nil {
-		failed := status != nil && status.Status == "failed"
-		if failed {
-			result.Uploads[0].Result = status
-		}
-		return failedAfterUpload(result, 0, failed, err)
+		return failedAfterUpload(result, 0, status != nil && status.Status == "failed", err)
 	}
 
 	result.Uploads[0].Result = status
@@ -263,19 +259,10 @@ func runBatchCoverageUpload(ctx *uploadContext, files []string, metadata map[str
 	batchStatus, err := ctx.client.PollCoverageBatchStatus(ctx.orgSlug, ctx.repoID, batchResp.BatchID, flagUploadWaitTimeout)
 	if err != nil {
 		// A batch's outcome is reported on its first upload, as on success.
-		failed := batchStatus != nil && batchStatus.Status == "failed"
-		if failed {
-			result.Uploads[0].Result = batchCoverageStatus(batchStatus)
-		}
-		return failedAfterUpload(result, 0, failed, err)
+		return failedAfterUpload(result, 0, batchStatus != nil && batchStatus.Status == "failed", err)
 	}
 
 	return renderBatchResult(result, batchStatus, ctx.prNumber)
-}
-
-// batchCoverageStatus reports a batch's outcome in the shape of a single coverage upload's.
-func batchCoverageStatus(s *api.CoverageBatchStatusResponse) *api.CoverageStatusResponse {
-	return &api.CoverageStatusResponse{Status: s.Status, ErrorMessage: s.ErrorMessage, CoverageResult: s.CoverageResult}
 }
 
 // renderBatchResult maps the batch status to the CLI's JSON output shape,
@@ -283,7 +270,11 @@ func batchCoverageStatus(s *api.CoverageBatchStatusResponse) *api.CoverageStatus
 // coverage regression). Surfaces the partial-coverage warning when the
 // server-side reaper finalized the batch with fewer than expected_count shards.
 func renderBatchResult(result UploadResult, batchStatus *api.CoverageBatchStatusResponse, prNumber int) error {
-	batchCovStatus := batchCoverageStatus(batchStatus)
+	batchCovStatus := &api.CoverageStatusResponse{
+		Status:         batchStatus.Status,
+		ErrorMessage:   batchStatus.ErrorMessage,
+		CoverageResult: batchStatus.CoverageResult,
+	}
 
 	if len(result.Uploads) > 0 {
 		result.Uploads[0].Result = batchCovStatus
