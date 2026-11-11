@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -70,6 +71,15 @@ func newUploadContext() (*uploadContext, error) {
 // resolveClient sets up the API client, org, and repo. Must be called before
 // uploadFile or any network operations. Skipped during dry-run.
 func (ctx *uploadContext) resolveClient() error {
+	client, err := newClient()
+	if err != nil {
+		return err
+	}
+	if client.Tokens != nil {
+		return ctx.resolveGitHubActions(client)
+	}
+	output.Info("Authenticated with an API key")
+
 	// Extract org/repo from CI-detected RepoSlug as fallback values.
 	var ciOrg, ciRepo string
 	if ctx.ci != nil && ctx.ci.RepoSlug != "" {
@@ -84,11 +94,6 @@ func (ctx *uploadContext) resolveClient() error {
 		return err
 	}
 
-	client, err := newClient()
-	if err != nil {
-		return err
-	}
-
 	repoID, repoName, err := resolveRepoID(client, orgSlug, ciRepo)
 	if err != nil {
 		return err
@@ -97,6 +102,34 @@ func (ctx *uploadContext) resolveClient() error {
 	ctx.client = client
 	ctx.orgSlug = orgSlug
 	ctx.repoID = repoID
+	ctx.repoName = repoName
+	return nil
+}
+
+// resolveGitHubActions takes the org and repository from the GitHub Actions token: Drape knows
+// which repository it was minted for, so neither has to be configured or guessed.
+func (ctx *uploadContext) resolveGitHubActions(client *api.Client) error {
+	identity, err := client.Identity()
+	if err != nil {
+		return &ExitError{Code: exitcode.UploadError, Err: err}
+	}
+	if identity.RepoID == nil || identity.RepoName == nil {
+		return &ExitError{Code: exitcode.UploadError, Err: errors.New("drape didn't say which repository this token is for")}
+	}
+	repoName := *identity.RepoName
+	if given := resolveFlag(flagRepo, "DRAPE_REPO"); given != "" && !sameRepository(given, repoName) {
+		return &ExitError{Code: exitcode.UsageError, Err: fmt.Errorf(
+			"`repo` is %s, but this workflow's GitHub token is for %s. "+
+				"Remove `repo`, or use DRAPE_API_KEY to upload to a different repository", given, repoName)}
+	}
+	if org := resolveFlag(flagOrg, "DRAPE_ORG"); org != "" && org != identity.OrgSlug {
+		output.Verbose("Ignoring org %q: this workflow's GitHub token uploads to %q", org, identity.OrgSlug)
+	}
+	output.Info("Authenticated as GitHub Actions for %s", repoName)
+
+	ctx.client = client
+	ctx.orgSlug = identity.OrgSlug
+	ctx.repoID = *identity.RepoID
 	ctx.repoName = repoName
 	return nil
 }

@@ -249,25 +249,6 @@ func (e *ExitError) Unwrap() error {
 	return e.Err
 }
 
-// newClient creates an API client from global flags, resolving env var defaults.
-func newClient() (*api.Client, error) {
-	apiKey := resolveFlag(flagAPIKey, "DRAPE_API_KEY")
-	if apiKey == "" {
-		return nil, &ExitError{Code: exitcode.UsageError, Err: errMissing("--api-key or DRAPE_API_KEY")}
-	}
-
-	apiURL := resolveFlag(flagAPIURL, "DRAPE_API_URL")
-	if apiURL == "" {
-		apiURL = "https://app.drape.io"
-	}
-
-	client, err := api.NewClient(apiURL, apiKey)
-	if err != nil {
-		return nil, &ExitError{Code: exitcode.UsageError, Err: err}
-	}
-	return client, nil
-}
-
 // resolveRepoID resolves the --repo flag to a numeric repo ID via the API.
 // ciFallback is the repo name extracted from CI-detected RepoSlug (may be empty).
 func resolveRepoID(client *api.Client, orgSlug, ciFallback string) (int, string, error) {
