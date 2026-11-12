@@ -66,7 +66,7 @@ func Parse(data []byte) ([]TestCase, error) {
 
 	// Try single <testsuite>
 	var suite xmlTestSuite
-	if err := xml.Unmarshal(data, &suite); err == nil && (len(suite.TestCases) > 0 || suite.Name != "") {
+	if err := xml.Unmarshal(data, &suite); err == nil && (len(suite.TestCases) > 0 || len(suite.Suites) > 0 || suite.Name != "") {
 		return convertSuites([]xmlTestSuite{suite}), nil
 	}
 

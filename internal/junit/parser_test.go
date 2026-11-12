@@ -125,3 +125,29 @@ func assertCase(t *testing.T, tc TestCase, name string, status Status, errMsg st
 		t.Errorf("%s: expected ErrorMsg=%q, got %q", name, errMsg, tc.ErrorMsg)
 	}
 }
+
+// PHPUnit can write a root <testsuite> with no name of its own that only
+// wraps named suites; its test cases are in the innermost suite.
+func TestParse_UnnamedRootSuiteWrappingNestedSuites(t *testing.T) {
+	data := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="">
+  <testsuite name="Unit">
+    <testsuite name="Tests\Unit\MathTest">
+      <testcase name="testAdd" classname="Tests.Unit.MathTest"/>
+      <testcase name="testDiv" classname="Tests.Unit.MathTest"><failure message="3 != 2"/></testcase>
+    </testsuite>
+  </testsuite>
+</testsuite>`)
+
+	cases, err := Parse(data)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	if len(cases) != 2 {
+		t.Fatalf("expected 2 test cases, got %d", len(cases))
+	}
+	assertCase(t, cases[1], "testDiv", StatusFailed, "3 != 2")
+	if cases[0].Suite != `Tests\Unit\MathTest` {
+		t.Errorf("Suite = %q, want the innermost suite", cases[0].Suite)
+	}
+}
