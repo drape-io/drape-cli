@@ -40,5 +40,8 @@ jobs:
           version: "~> v2"
           args: release --clean
         env:
+          # Release the tag that triggered this run. Without it, GoReleaser picks a tag from
+          # git, and a final tag on the same commit as a prerelease tag can ship as the prerelease.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
